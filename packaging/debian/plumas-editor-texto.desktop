@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Plumas Editor
+GenericName=Text editor
+Comment=Lightweight GTK4 text editor — developed by @DEVELOPER@
+Keywords=text;editor;notepad;markdown;code;plumas;
+Exec=plumas-editor-texto %F
+Icon=plumas-editor-texto
+Terminal=false
+Categories=Utility;TextEditor;
+StartupWMClass=plumas-editor-texto
+MimeType=text/plain;text/markdown;text/x-markdown;text/x-chdr;text/x-csrc;text/x-c++src;text/x-python;text/x-java;text/x-sh;text/css;text/html;text/xml;text/x-sql;text/x-tex;text/x-log;application/json;application/xml;text/x-toml;text/x-yaml;text/x-ini;
+StartupNotify=true

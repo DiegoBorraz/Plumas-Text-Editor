@@ -1,0 +1,53 @@
+window {
+  border-radius: 0;
+  background-color: #cfd5e1;
+}
+
+textview.line-numbers {
+  padding-top: 8px;
+  padding-right: 3px;
+  background-color: #a6aec1;
+  border-radius: 6px 0 0 6px;
+  color: #17a7a8;
+}
+
+box.editor-toolbar {
+  min-height: 0;
+}
+
+box.editor-toolbar button {
+  min-height: 0;
+  min-width: 0;
+  padding: 2px 10px;
+}
+
+box.editor-toolbar button label {
+  font-size: 12px;
+}
+
+
+.window-controls button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  -gtk-icon-size: 14px;
+}
+
+.window-controls .window-close:hover {
+  background-color: #e81123;
+  color: white;
+}
+
+.titlebar {
+  min-height: 36px;
+}
+
+box.editor-footer label {
+  font-size: 11px;
+}
+
+textview.editor-main {
+  background-color: #ffffff;
+  padding: 8px;
+  border-radius: 6px;
+}
