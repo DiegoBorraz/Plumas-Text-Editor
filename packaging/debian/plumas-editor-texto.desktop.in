@@ -2,7 +2,7 @@
 Type=Application
 Name=Plumas Editor
 GenericName=Text editor
-Comment=Lightweight GTK4 text editor — developed by @DEVELOPER@
+Comment=Lightweight GTK4 text editor — developed by @PLUMAS_DEVELOPER@
 Keywords=text;editor;notepad;markdown;code;plumas;
 Exec=plumas-editor-texto %F
 Icon=plumas-editor-texto

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/com/plumas/EditorTexto">
+    <file>../src/ui/styles.css</file>
+    <file>plumas-icon.webp</file>
+  </gresource>
+</gresources>

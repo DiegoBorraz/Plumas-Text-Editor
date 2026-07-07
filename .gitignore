@@ -1,3 +1,30 @@
+# Build / CMake
 build/
+cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
+install_manifest.txt
+
+# Pacote Debian
 packaging/debian/staging/
 packaging/debian/dist/
+*.deb
+
+# CPack
+_CPack_Packages/
+
+# Objetos e binários (fora de build/, se gerados na raiz)
+*.o
+*.a
+*.so
+*.so.*
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Sistema
+.DS_Store
+Thumbs.db

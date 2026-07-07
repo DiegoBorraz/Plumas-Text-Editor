@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.plumas.EditorTexto</id>
+  <name>Plumas Editor</name>
+  <summary>@PLUMAS_SUMMARY@</summary>
+  <description>
+    <p>Plumas Text Editor — lighter than Windows Notepad.</p>
+    <p>A text editor with a GTK4/libadwaita interface, line numbers, and support for common text file formats.</p>
+  </description>
+  <launchable type="desktop-id">plumas-editor-texto.desktop</launchable>
+  <url type="homepage">@PLUMAS_HOMEPAGE@</url>
+  <developer_name>@PLUMAS_DEVELOPER@</developer_name>
+  <project_license>LicenseRef-Plumas-Free-Non-Commercial-1.0</project_license>
+  <content_rating type="oars-1.1"/>
+</component>

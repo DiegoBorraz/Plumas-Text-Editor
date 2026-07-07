@@ -1,6 +1,9 @@
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/Resources.hpp"
 
+#include <optional>
+#include <string>
+
 namespace plumas::ui {
 
 namespace {
@@ -74,8 +77,16 @@ void onTitlebarPressed(
         gdk_event_get_time(event));
 }
 
-GtkWidget* createTitleLogo(const std::filesystem::path& iconPath) {
-    GtkWidget* logo = gtk_image_new_from_file(iconPath.string().c_str());
+GtkWidget* createTitleLogoFromResource() {
+    GtkWidget* logo = gtk_image_new_from_resource(resourcePath(kIconFileName).c_str());
+    gtk_image_set_pixel_size(GTK_IMAGE(logo), 30);
+    gtk_widget_set_size_request(logo, 30, 30);
+    gtk_widget_set_valign(logo, GTK_ALIGN_CENTER);
+    return logo;
+}
+
+GtkWidget* createTitleLogoFromFile(const std::string& iconPath) {
+    GtkWidget* logo = gtk_image_new_from_file(iconPath.c_str());
     gtk_image_set_pixel_size(GTK_IMAGE(logo), 30);
     gtk_widget_set_size_request(logo, 30, 30);
     gtk_widget_set_valign(logo, GTK_ALIGN_CENTER);
@@ -130,9 +141,11 @@ GtkWidget* createTitleBar(AppState* state) {
     gtk_widget_add_css_class(titleLabel, "title-2");
 
     GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    const std::optional<std::filesystem::path> iconPath = findResourcePath(kIconFileName);
-    if (iconPath.has_value()) {
-        gtk_box_append(GTK_BOX(titleGroup), createTitleLogo(*iconPath));
+    if (hasBundledResource(kIconFileName)) {
+        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromResource());
+    } else if (const std::optional<std::string> iconPath = findFilesystemResourcePath(kIconFileName);
+               iconPath.has_value()) {
+        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
     }
     gtk_box_append(GTK_BOX(titleGroup), titleLabel);
 

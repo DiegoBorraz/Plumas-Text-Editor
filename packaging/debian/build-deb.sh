@@ -7,8 +7,6 @@ BUILD_DIR="$ROOT/build"
 STAGING="$PACKAGING_DIR/staging"
 OUTPUT_DIR="$PACKAGING_DIR/dist"
 ICON_SOURCE="$ROOT/plumas.png"
-ICON_NAME="plumas-editor-texto"
-ICON_SIZES=(16 24 32 48 64 128 256 512)
 
 PKG_NAME="plumas-editor-texto"
 VERSION="$(grep '^project(plumas-editor-texto' "$ROOT/CMakeLists.txt" | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
@@ -22,10 +20,10 @@ usage() {
     cat <<EOF
 Uso: $(basename "$0") [opcoes]
 
-  Compila o projeto em Release e gera um pacote .deb para Debian/Ubuntu.
+  Compila o projeto em Release, instala com cmake --install e gera um .deb.
 
 Opcoes:
-  --skip-build    Nao recompila; usa o binario existente em build/
+  --skip-build    Nao recompila; usa o build existente
   --version VER   Sobrescreve a versao lida do CMakeLists.txt
   -h, --help      Mostra esta ajuda
 EOF
@@ -60,44 +58,6 @@ require_command() {
         echo "Erro: comando obrigatorio nao encontrado: $1" >&2
         exit 1
     fi
-}
-
-resize_icon() {
-    local size="$1"
-    local output="$2"
-    if command -v magick >/dev/null 2>&1; then
-        magick "$ICON_SOURCE" -resize "${size}x${size}" "$output"
-        return
-    fi
-    if command -v convert >/dev/null 2>&1; then
-        convert "$ICON_SOURCE" -resize "${size}x${size}" "$output"
-        return
-    fi
-    if python3 - <<'PY' "$ICON_SOURCE" "$size" "$output"
-from PIL import Image
-import sys
-
-source, size_text, output = sys.argv[1:4]
-size = int(size_text)
-with Image.open(source) as image:
-    resized = image.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
-    resized.save(output, format="PNG")
-PY
-    then
-        return
-    fi
-    echo "Erro: instale imagemagick ou pillow (sudo apt install imagemagick python3-pil)" >&2
-    exit 1
-}
-
-install_hicolor_icons() {
-    echo "==> Gerando icones do tema hicolor a partir de plumas.png..."
-    for size in "${ICON_SIZES[@]}"; do
-        local icon_dir="$STAGING/usr/share/icons/hicolor/${size}x${size}/apps"
-        mkdir -p "$icon_dir"
-        resize_icon "$size" "$icon_dir/${ICON_NAME}.png"
-        chmod 644 "$icon_dir/${ICON_NAME}.png"
-    done
 }
 
 write_postinst() {
@@ -150,17 +110,56 @@ License: ${PKG_LICENSE}
 EOF
     sed 's/^/ /' "$license_file" >>"$STAGING/usr/share/doc/${PKG_NAME}/copyright"
     chmod 644 "$STAGING/usr/share/doc/${PKG_NAME}/copyright"
-    install -m 644 "$license_file" "$STAGING/usr/share/doc/${PKG_NAME}/LICENSE"
+}
+
+resolve_shlibs_depends() {
+    local binary="$STAGING/usr/bin/${PKG_NAME}"
+    local multiarch
+    multiarch="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || true)"
+
+    local -a library_paths=()
+    if [[ -n "$multiarch" && -d "$STAGING/usr/lib/${multiarch}" ]]; then
+        library_paths+=("-l${STAGING}/usr/lib/${multiarch}")
+    fi
+    if [[ -d "$STAGING/usr/lib" ]]; then
+        library_paths+=("-l${STAGING}/usr/lib")
+    fi
+
+    local temp_dir
+    temp_dir="$(mktemp -d)"
+    mkdir -p "$temp_dir/debian"
+    cat >"$temp_dir/debian/control" <<EOF
+Source: ${PKG_NAME}
+Package: ${PKG_NAME}
+Version: ${VERSION}
+Architecture: ${ARCH}
+Maintainer: ${PKG_MAINTAINER}
+EOF
+
+    local shlibs_depends=""
+    if shlibs_depends="$(
+        cd "$temp_dir" && dpkg-shlibdeps -O "${library_paths[@]}" "$binary"
+    )"; then
+        rm -rf "$temp_dir"
+        echo "${shlibs_depends#shlibs:Depends=}"
+        return
+    fi
+
+    rm -rf "$temp_dir"
+    echo "libc6 (>= 2.34), libgtk-4-1 (>= 4.14), libadwaita-1-0 (>= 1.5)"
 }
 
 write_control() {
+    local shlibs_depends
+    shlibs_depends="$(resolve_shlibs_depends)"
+
     cat >"$STAGING/DEBIAN/control" <<EOF
 Package: ${PKG_NAME}
 Version: ${VERSION}
 Section: editors
 Priority: optional
 Architecture: ${ARCH}
-Depends: libgtk-4-1 (>= 4.14), libadwaita-1-0 (>= 1.5)
+Depends: ${shlibs_depends}
 Maintainer: ${PKG_MAINTAINER}
 Homepage: ${PKG_HOMEPAGE}
 Description: ${PKG_SUMMARY}
@@ -171,43 +170,42 @@ EOF
 require_command cmake
 require_command dpkg-deb
 require_command dpkg
+require_command dpkg-shlibdeps
 
 if [[ ! -f "$ICON_SOURCE" ]]; then
     echo "Erro: icone de alta resolucao nao encontrado em $ICON_SOURCE" >&2
     exit 1
 fi
 
+CMAKE_ARGS=(
+    -B "$BUILD_DIR"
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_INSTALL_PREFIX=/usr
+    -DPLUMAS_DEVELOPER="${PKG_DEVELOPER}"
+    -DPLUMAS_HOMEPAGE="${PKG_HOMEPAGE}"
+    -DPLUMAS_SUMMARY="${PKG_SUMMARY}"
+)
+
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
     echo "==> Configurando build Release..."
-    cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+    cmake "${CMAKE_ARGS[@]}"
     echo "==> Compilando..."
     cmake --build "$BUILD_DIR" -j"$(nproc)"
 fi
 
-BINARY="$BUILD_DIR/plumas-editor-texto"
-if [[ ! -x "$BINARY" ]]; then
-    echo "Erro: binario nao encontrado em $BINARY" >&2
+if [[ ! -x "$BUILD_DIR/plumas-editor-texto" ]]; then
+    echo "Erro: binario nao encontrado em $BUILD_DIR/plumas-editor-texto" >&2
     exit 1
 fi
 
-echo "==> Montando pacote Debian ${VERSION} (${ARCH})..."
+echo "==> Gerando icones do tema hicolor..."
+cmake --build "$BUILD_DIR" --target plumas_icons
+
+echo "==> Instalando arquivos em staging com DESTDIR..."
 rm -rf "$STAGING"
-mkdir -p \
-    "$STAGING/DEBIAN" \
-    "$STAGING/usr/lib/plumas-editor-texto/resources" \
-    "$STAGING/usr/bin" \
-    "$STAGING/usr/share/applications" \
-    "$STAGING/usr/share/doc/${PKG_NAME}"
+DESTDIR="$STAGING" cmake --install "$BUILD_DIR" --prefix /usr
 
-install -m 755 "$BINARY" "$STAGING/usr/lib/plumas-editor-texto/plumas-editor-texto"
-install -m 644 "$ROOT/src/ui/styles.css" "$STAGING/usr/lib/plumas-editor-texto/resources/styles.css"
-install -m 644 "$ROOT/resources/plumas-icon.webp" "$STAGING/usr/lib/plumas-editor-texto/resources/plumas-icon.webp"
-ln -sf ../lib/plumas-editor-texto/plumas-editor-texto "$STAGING/usr/bin/plumas-editor-texto"
-sed "s/@DEVELOPER@/${PKG_DEVELOPER}/" "$PACKAGING_DIR/plumas-editor-texto.desktop" \
-    >"$STAGING/usr/share/applications/plumas-editor-texto.desktop"
-chmod 644 "$STAGING/usr/share/applications/plumas-editor-texto.desktop"
-
-install_hicolor_icons
+mkdir -p "$STAGING/DEBIAN"
 write_postinst
 write_postrm
 write_copyright
@@ -222,7 +220,3 @@ echo "Pacote criado: $OUTPUT_DIR/$DEB_FILE"
 echo ""
 echo "Instalar:"
 echo "  sudo apt install ./packaging/debian/dist/$DEB_FILE"
-echo ""
-echo "Ou:"
-echo "  sudo dpkg -i $OUTPUT_DIR/$DEB_FILE"
-echo "  sudo apt-get install -f"

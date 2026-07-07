@@ -18,14 +18,19 @@ namespace plumas::ui {
 namespace {
 
 void loadStyles() {
-    const std::optional<std::filesystem::path> stylesPath = findResourcePath(kStylesFileName);
-    if (!stylesPath.has_value()) {
-        std::cerr << "plumas: styles.css not found in resources/\n";
+    GtkCssProvider* provider = gtk_css_provider_new();
+
+    if (hasBundledResource(kStylesFileName)) {
+        gtk_css_provider_load_from_resource(provider, resourcePath(kStylesFileName).c_str());
+    } else if (const std::optional<std::string> stylesPath = findFilesystemResourcePath(kStylesFileName);
+               stylesPath.has_value()) {
+        gtk_css_provider_load_from_path(provider, stylesPath->c_str());
+    } else {
+        std::cerr << "plumas: styles.css not found\n";
+        g_object_unref(provider);
         return;
     }
 
-    GtkCssProvider* provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_path(provider, stylesPath->string().c_str());
     gtk_style_context_add_provider_for_display(
         gdk_display_get_default(),
         GTK_STYLE_PROVIDER(provider),

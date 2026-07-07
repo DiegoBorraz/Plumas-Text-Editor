@@ -13,7 +13,7 @@ namespace plumas::ui {
 
 constexpr const char* kAppId = "com.plumas.EditorTexto";
 constexpr const char* kWindowTitle = "Plumas Text Editor";
-constexpr const char* kFooterTagline = "Lighter than Windows Notepad";
+constexpr const char* kFooterTagline = "Lighter than Windows Notepad. - https://github.com/DiegoBorraz";
 constexpr const char* kIconFileName = "plumas-icon.webp";
 constexpr const char* kStylesFileName = "styles.css";
 
