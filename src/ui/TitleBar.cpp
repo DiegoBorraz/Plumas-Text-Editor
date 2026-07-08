@@ -11,20 +11,12 @@ namespace plumas::ui {
 
 namespace {
 
-GdkToplevel* getToplevel(GtkWindow* window) {
-    GdkSurface* surface = gtk_native_get_surface(GTK_NATIVE(window));
-    if (surface == nullptr) {
-        return nullptr;
-    }
-    return GDK_TOPLEVEL(surface);
-}
-
 void updateMaximizeIcon(AppState* state) {
     if (state->maximizeButton == nullptr) {
         return;
     }
 
-    const bool maximized = gtk_window_is_maximized(state->window);
+    const bool maximized = isWindowMaximized(state->window);
     gtk_button_set_icon_name(
         GTK_BUTTON(state->maximizeButton),
         maximized ? "window-restore-symbolic" : "window-maximize-symbolic");
@@ -35,16 +27,19 @@ void onMinimizeClicked(GtkButton* /*button*/, gpointer userData) {
     gtk_window_minimize(state->window);
 }
 
+void scheduleMaximizeIconUpdate(AppState* state) {
+    g_idle_add(
+        +[](gpointer userData) -> gboolean {
+            updateMaximizeIcon(static_cast<AppState*>(userData));
+            return G_SOURCE_REMOVE;
+        },
+        state);
+}
+
 void onMaximizeClicked(GtkButton* /*button*/, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
-
-    if (gtk_window_is_maximized(state->window)) {
-        gtk_window_unmaximize(state->window);
-    } else {
-        gtk_window_maximize(state->window);
-    }
-
-    updateMaximizeIcon(state);
+    toggleWindowMaximized(state->window);
+    scheduleMaximizeIconUpdate(state);
 }
 
 void onCloseClicked(GtkButton* /*button*/, gpointer userData) {
@@ -54,30 +49,26 @@ void onCloseClicked(GtkButton* /*button*/, gpointer userData) {
 
 void onTitlebarPressed(
     GtkGestureClick* gesture,
-    gint /*nPress*/,
+    gint nPress,
     gdouble x,
     gdouble y,
     gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
-    GdkToplevel* toplevel = getToplevel(state->window);
-    if (toplevel == nullptr) {
+
+    if (nPress == 2) {
+        toggleWindowMaximized(state->window);
+        scheduleMaximizeIconUpdate(state);
         return;
     }
 
-    GdkEventSequence* sequence =
-        gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture));
-    GdkEvent* event = gtk_gesture_get_last_event(GTK_GESTURE(gesture), sequence);
-    if (event == nullptr) {
-        return;
-    }
+    beginWindowMoveFromGesture(state->window, gesture, x, y);
+}
 
-    gdk_toplevel_begin_move(
-        toplevel,
-        gdk_event_get_device(event),
-        gdk_button_event_get_button(event),
-        x,
-        y,
-        gdk_event_get_time(event));
+void attachTitleBarDrag(GtkWidget* widget, AppState* state) {
+    GtkGesture* titleDrag = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(titleDrag), GDK_BUTTON_PRIMARY);
+    g_signal_connect(titleDrag, "pressed", G_CALLBACK(onTitlebarPressed), state);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(titleDrag));
 }
 
 GtkWidget* createTitleLogoFromResource() {
@@ -168,10 +159,8 @@ GtkWidget* createTitleBar(AppState* state) {
     gtk_box_append(GTK_BOX(titleBar), state->pathLabel);
     gtk_box_append(GTK_BOX(titleBar), windowControls);
 
-    GtkGesture* titleDrag = gtk_gesture_click_new();
-    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(titleDrag), GDK_BUTTON_PRIMARY);
-    g_signal_connect(titleDrag, "pressed", G_CALLBACK(onTitlebarPressed), state);
-    gtk_widget_add_controller(titleGroup, GTK_EVENT_CONTROLLER(titleDrag));
+    attachTitleBarDrag(titleGroup, state);
+    attachTitleBarDrag(state->pathLabel, state);
 
     return titleBar;
 }

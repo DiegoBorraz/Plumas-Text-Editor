@@ -22,17 +22,6 @@ scrolledwindow {
   min-width: 0;
 }
 
-drawingarea.line-numbers-gutter {
-  background-color: #a6aec1;
-  border-radius: 6px 0 0 6px;
-  padding-top: 8px;
-  padding-right: 3px;
-}
-
-box.editor-row {
-  min-height: 0;
-}
-
 box.resize-handle {
   background-color: transparent;
 }
@@ -110,11 +99,4 @@ box.search-replace-bar button label {
   color: #000000;
   opacity: 1;
   font-size: 14px;
-}
-
-textview.editor-main {
-  background-color: #ffffff;
-  padding: 8px;
-  border-radius: 6px;
-  min-height: 0;
 }

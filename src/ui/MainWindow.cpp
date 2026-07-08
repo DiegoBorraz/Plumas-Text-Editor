@@ -62,7 +62,6 @@ GtkWidget* createToolbar(AppState* state) {
 
 GtkWidget* createFooter() {
     GtkWidget* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_add_css_class(footer, "editor-footer");
     gtk_widget_set_margin_start(footer, 20);
     gtk_widget_set_margin_end(footer, 20);
     gtk_widget_set_margin_top(footer, 4);
@@ -90,42 +89,20 @@ gboolean onCloseRequest(GtkWindow* /*window*/, gpointer userData) {
     return TRUE;
 }
 
-void onDarkModeChanged(AdwStyleManager* /*styleManager*/, GParamSpec* /*pspec*/, gpointer userData) {
-    syncWindowTheme(static_cast<AppState*>(userData));
-}
-
 void onResizePressed(
     GtkGestureClick* gesture,
     gint /*nPress*/,
     gdouble x,
     gdouble y,
     gpointer userData) {
-    const GdkSurfaceEdge edge = static_cast<GdkSurfaceEdge>(GPOINTER_TO_INT(userData));
-    GtkWidget* widget = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
-    GtkNative* native = GTK_NATIVE(gtk_widget_get_root(widget));
-    GdkSurface* surface = gtk_native_get_surface(native);
-    if (surface == nullptr || !GDK_IS_TOPLEVEL(surface)) {
-        return;
-    }
-
-    GdkEventSequence* sequence =
-        gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture));
-    GdkEvent* event = gtk_gesture_get_last_event(GTK_GESTURE(gesture), sequence);
-    if (event == nullptr) {
-        return;
-    }
-
-    gdk_toplevel_begin_resize(
-        GDK_TOPLEVEL(surface),
-        edge,
-        gdk_event_get_device(event),
-        gdk_button_event_get_button(event),
-        x,
-        y,
-        gdk_event_get_time(event));
+    AppState* state = static_cast<AppState*>(userData);
+    const GdkSurfaceEdge edge = static_cast<GdkSurfaceEdge>(GPOINTER_TO_INT(
+        g_object_get_data(G_OBJECT(gesture), "resize-edge")));
+    beginWindowResizeFromGesture(state->window, gesture, edge, x, y);
 }
 
 GtkWidget* createResizeHandle(
+    AppState* state,
     const GdkSurfaceEdge edge,
     const GtkAlign halign,
     const GtkAlign valign,
@@ -136,39 +113,72 @@ GtkWidget* createResizeHandle(
     gtk_widget_set_size_request(handle, width, height);
     gtk_widget_set_halign(handle, halign);
     gtk_widget_set_valign(handle, valign);
+    gtk_widget_set_can_target(handle, TRUE);
 
     GtkGesture* click = gtk_gesture_click_new();
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_PRIMARY);
-    g_signal_connect(click, "pressed", G_CALLBACK(onResizePressed), GINT_TO_POINTER(edge));
+    g_object_set_data(G_OBJECT(click), "resize-edge", GINT_TO_POINTER(edge));
+    g_signal_connect(click, "pressed", G_CALLBACK(onResizePressed), state);
     gtk_widget_add_controller(handle, GTK_EVENT_CONTROLLER(click));
     return handle;
 }
 
-void addWindowResizeHandles(GtkWidget* overlay) {
+void addWindowResizeHandles(GtkWidget* overlay, AppState* state) {
+    constexpr int kEdgeThickness = 8;
+    constexpr int kCornerSize = 14;
+
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_NORTH, GTK_ALIGN_FILL, GTK_ALIGN_START, -1, 6));
+        createResizeHandle(
+            state, GDK_SURFACE_EDGE_NORTH, GTK_ALIGN_FILL, GTK_ALIGN_START, -1, kEdgeThickness));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_SOUTH, GTK_ALIGN_FILL, GTK_ALIGN_END, -1, 6));
+        createResizeHandle(
+            state, GDK_SURFACE_EDGE_SOUTH, GTK_ALIGN_FILL, GTK_ALIGN_END, -1, kEdgeThickness));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_WEST, GTK_ALIGN_START, GTK_ALIGN_FILL, 6, -1));
+        createResizeHandle(
+            state, GDK_SURFACE_EDGE_WEST, GTK_ALIGN_START, GTK_ALIGN_FILL, kEdgeThickness, -1));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_EAST, GTK_ALIGN_END, GTK_ALIGN_FILL, 6, -1));
+        createResizeHandle(
+            state, GDK_SURFACE_EDGE_EAST, GTK_ALIGN_END, GTK_ALIGN_FILL, kEdgeThickness, -1));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_NORTH_EAST, GTK_ALIGN_END, GTK_ALIGN_START, 12, 12));
+        createResizeHandle(
+            state,
+            GDK_SURFACE_EDGE_NORTH_EAST,
+            GTK_ALIGN_END,
+            GTK_ALIGN_START,
+            kCornerSize,
+            kCornerSize));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_NORTH_WEST, GTK_ALIGN_START, GTK_ALIGN_START, 12, 12));
+        createResizeHandle(
+            state,
+            GDK_SURFACE_EDGE_NORTH_WEST,
+            GTK_ALIGN_START,
+            GTK_ALIGN_START,
+            kCornerSize,
+            kCornerSize));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_SOUTH_EAST, GTK_ALIGN_END, GTK_ALIGN_END, 12, 12));
+        createResizeHandle(
+            state,
+            GDK_SURFACE_EDGE_SOUTH_EAST,
+            GTK_ALIGN_END,
+            GTK_ALIGN_END,
+            kCornerSize,
+            kCornerSize));
     gtk_overlay_add_overlay(
         GTK_OVERLAY(overlay),
-        createResizeHandle(GDK_SURFACE_EDGE_SOUTH_WEST, GTK_ALIGN_START, GTK_ALIGN_END, 12, 12));
+        createResizeHandle(
+            state,
+            GDK_SURFACE_EDGE_SOUTH_WEST,
+            GTK_ALIGN_START,
+            GTK_ALIGN_END,
+            kCornerSize,
+            kCornerSize));
 }
 
 gboolean onWindowKey(
@@ -255,7 +265,6 @@ void buildMainWindow(AppState* state) {
     gtk_widget_set_overflow(state->shell, GTK_OVERFLOW_HIDDEN);
 
     state->toastOverlay = adw_toast_overlay_new();
-    gtk_widget_add_css_class(state->toastOverlay, "plumas-shell-overlay");
     gtk_widget_set_vexpand(state->toastOverlay, TRUE);
     gtk_widget_set_hexpand(state->toastOverlay, TRUE);
     gtk_widget_set_overflow(state->toastOverlay, GTK_OVERFLOW_HIDDEN);
@@ -286,22 +295,13 @@ void buildMainWindow(AppState* state) {
     gtk_widget_set_vexpand(windowOverlay, TRUE);
     gtk_widget_set_hexpand(windowOverlay, TRUE);
     gtk_overlay_set_child(GTK_OVERLAY(windowOverlay), rootBox);
-    addWindowResizeHandles(windowOverlay);
+    addWindowResizeHandles(windowOverlay, state);
 
     adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(state->toastOverlay), windowOverlay);
     gtk_box_append(GTK_BOX(state->shell), state->toastOverlay);
     adw_application_window_set_content(
         ADW_APPLICATION_WINDOW(state->window),
         state->shell);
-
-    AdwStyleManager* styleManager = adw_style_manager_get_default();
-    g_signal_connect_object(
-        styleManager,
-        "notify::dark",
-        G_CALLBACK(onDarkModeChanged),
-        state,
-        G_CONNECT_DEFAULT);
-    syncWindowTheme(state);
 
     GtkEventController* windowKeys = gtk_event_controller_key_new();
     g_signal_connect(windowKeys, "key-pressed", G_CALLBACK(onWindowKey), state);

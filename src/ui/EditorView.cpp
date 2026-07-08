@@ -5,12 +5,87 @@
 
 #include <pango/pangocairo.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 
 namespace plumas::ui {
 
 namespace {
+
+constexpr const char kLineGutterBackground[] = "#ededf2";
+constexpr const char kLineNumberColor[] = "#17a6a8";
+constexpr const char kEditorBackground[] = "#ffffff";
+
+constexpr double kLineGutterBorderRadius = 6.0;
+constexpr double kEditorBorderRadius = 6.0;
+
+constexpr int kLineGutterPaddingTop = 8;
+constexpr int kLineGutterPaddingRight = 3;
+constexpr int kEditorPadding = 8;
+
+GtkCssProvider* gEditorLayerProvider = nullptr;
+
+void ensureEditorLayerProvider() {
+    if (gEditorLayerProvider != nullptr) {
+        return;
+    }
+
+    gEditorLayerProvider = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(
+        gEditorLayerProvider,
+        ".editor-layer { background-color: transparent; min-height: 0; }");
+}
+
+void applyEditorLayerStyle(GtkWidget* widget) {
+    ensureEditorLayerProvider();
+    gtk_widget_add_css_class(widget, "editor-layer");
+    gtk_style_context_add_provider(
+        gtk_widget_get_style_context(widget),
+        GTK_STYLE_PROVIDER(gEditorLayerProvider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
+void paintLineGutterBackground(cairo_t* cr, const double width, const double height) {
+    GdkRGBA backgroundColor;
+    gdk_rgba_parse(&backgroundColor, kLineGutterBackground);
+
+    const double radius =
+        std::min(kLineGutterBorderRadius, std::min(width / 2.0, height / 2.0));
+
+    cairo_new_path(cr);
+    cairo_move_to(cr, radius, 0.0);
+    cairo_line_to(cr, width, 0.0);
+    cairo_line_to(cr, width, height);
+    cairo_line_to(cr, radius, height);
+    cairo_arc(cr, radius, height - radius, radius, M_PI_2, M_PI);
+    cairo_line_to(cr, 0.0, radius);
+    cairo_arc(cr, radius, radius, radius, M_PI, 3.0 * M_PI_2);
+    cairo_close_path(cr);
+
+    gdk_cairo_set_source_rgba(cr, &backgroundColor);
+    cairo_fill(cr);
+}
+
+void paintEditorBackground(cairo_t* cr, const double width, const double height) {
+    GdkRGBA backgroundColor;
+    gdk_rgba_parse(&backgroundColor, kEditorBackground);
+
+    const double radius =
+        std::min(kEditorBorderRadius, std::min(width / 2.0, height / 2.0));
+
+    cairo_new_path(cr);
+    cairo_move_to(cr, 0.0, 0.0);
+    cairo_line_to(cr, width - radius, 0.0);
+    cairo_arc(cr, width - radius, radius, radius, 3.0 * M_PI_2, 0.0);
+    cairo_line_to(cr, width, height - radius);
+    cairo_arc(cr, width - radius, height - radius, radius, 0.0, M_PI_2);
+    cairo_line_to(cr, 0.0, height);
+    cairo_close_path(cr);
+
+    gdk_cairo_set_source_rgba(cr, &backgroundColor);
+    cairo_fill(cr);
+}
 
 void queueLineGutterRedraw(AppState* state) {
     if (state->lineGutter != nullptr) {
@@ -29,12 +104,17 @@ void drawLineNumbers(
         return;
     }
 
+    paintLineGutterBackground(cr, width, height);
+
     GtkTextView* textView = GTK_TEXT_VIEW(state->textView);
     GtkAdjustment* adjustment =
         gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll));
     const double scrollY = gtk_adjustment_get_value(adjustment);
 
-    cairo_set_source_rgb(cr, 0.09, 0.65, 0.66);
+    GdkRGBA lineNumberColor;
+    gdk_rgba_parse(&lineNumberColor, kLineNumberColor);
+    gdk_cairo_set_source_rgba(cr, &lineNumberColor);
+
     PangoLayout* layout = pango_cairo_create_layout(cr);
     PangoContext* widgetContext = gtk_widget_get_pango_context(GTK_WIDGET(textView));
     pango_layout_set_font_description(
@@ -47,8 +127,7 @@ void drawLineNumbers(
 
     int lineY = 0;
     gtk_text_view_get_line_yrange(textView, &firstIter, &lineY, nullptr);
-    constexpr int topPadding = 8;
-    double y = static_cast<double>(lineY) - scrollY + topPadding;
+    double y = static_cast<double>(lineY) - scrollY + kLineGutterPaddingTop;
 
     GtkTextIter currentIter = firstIter;
     while (y < height) {
@@ -65,7 +144,7 @@ void drawLineNumbers(
         const int lineNumber = gtk_text_iter_get_line(&currentIter) + 1;
         const std::string lineText = std::to_string(lineNumber);
         pango_layout_set_text(layout, lineText.c_str(), -1);
-        pango_layout_set_width(layout, (width - 3) * PANGO_SCALE);
+        pango_layout_set_width(layout, (width - kLineGutterPaddingRight) * PANGO_SCALE);
         pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
 
         cairo_move_to(cr, 0, y);
@@ -78,6 +157,15 @@ void drawLineNumbers(
     }
 
     g_object_unref(layout);
+}
+
+void drawEditorBackground(
+    GtkDrawingArea* /*area*/,
+    cairo_t* cr,
+    const int width,
+    const int height,
+    gpointer /*userData*/) {
+    paintEditorBackground(cr, width, height);
 }
 
 void onInsertText(
@@ -155,8 +243,7 @@ bool isEditorWithinSizeLimit(AppState* state) {
 
 GtkWidget* createEditorView(AppState* state) {
     state->lineGutter = gtk_drawing_area_new();
-    gtk_widget_add_css_class(state->lineGutter, "line-numbers-gutter");
-    gtk_widget_set_size_request(state->lineGutter, 24, -1);
+    gtk_widget_set_size_request(state->lineGutter, 40, -1);
     gtk_widget_set_vexpand(state->lineGutter, TRUE);
     gtk_widget_set_hexpand(state->lineGutter, FALSE);
     gtk_drawing_area_set_draw_func(
@@ -164,6 +251,19 @@ GtkWidget* createEditorView(AppState* state) {
         drawLineNumbers,
         state,
         nullptr);
+
+    GtkWidget* editorBackdrop = gtk_drawing_area_new();
+    gtk_drawing_area_set_draw_func(
+        GTK_DRAWING_AREA(editorBackdrop),
+        drawEditorBackground,
+        nullptr,
+        nullptr);
+
+    GtkWidget* editorPanel = gtk_overlay_new();
+    gtk_widget_set_vexpand(editorPanel, TRUE);
+    gtk_widget_set_hexpand(editorPanel, TRUE);
+    gtk_widget_set_overflow(editorPanel, GTK_OVERFLOW_HIDDEN);
+    gtk_overlay_set_child(GTK_OVERLAY(editorPanel), editorBackdrop);
 
     state->editorScroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(
@@ -174,14 +274,22 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(state->editorScroll), FALSE);
     gtk_widget_set_vexpand(state->editorScroll, TRUE);
     gtk_widget_set_hexpand(state->editorScroll, TRUE);
+    gtk_widget_set_halign(state->editorScroll, GTK_ALIGN_FILL);
+    gtk_widget_set_valign(state->editorScroll, GTK_ALIGN_FILL);
+    applyEditorLayerStyle(state->editorScroll);
 
     state->textView = gtk_text_view_new();
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(state->textView), TRUE);
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(state->textView), GTK_WRAP_NONE);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
+    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
+    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
+    gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
     gtk_widget_set_vexpand(state->textView, FALSE);
     gtk_widget_set_hexpand(state->textView, FALSE);
-    gtk_widget_add_css_class(state->textView, "editor-main");
+    applyEditorLayerStyle(state->textView);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(state->editorScroll), state->textView);
+    gtk_overlay_add_overlay(GTK_OVERLAY(editorPanel), state->editorScroll);
 
     GtkWidget* editorRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(editorRow, "editor-row");
@@ -189,7 +297,7 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_widget_set_hexpand(editorRow, TRUE);
     gtk_widget_set_overflow(editorRow, GTK_OVERFLOW_HIDDEN);
     gtk_box_append(GTK_BOX(editorRow), state->lineGutter);
-    gtk_box_append(GTK_BOX(editorRow), state->editorScroll);
+    gtk_box_append(GTK_BOX(editorRow), editorPanel);
 
     GtkWidget* editorContainer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_add_css_class(editorContainer, "editor-workspace");
