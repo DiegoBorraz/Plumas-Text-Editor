@@ -7,9 +7,10 @@ BUILD_DIR="$ROOT/build"
 STAGING="$PACKAGING_DIR/staging"
 OUTPUT_DIR="$PACKAGING_DIR/dist"
 ICON_SOURCE="$ROOT/plumas.png"
+ICON_FALLBACK="$ROOT/resources/plumas-icon.webp"
 
-PKG_NAME="plumas-editor-texto"
-VERSION="$(grep '^project(plumas-editor-texto' "$ROOT/CMakeLists.txt" | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
+PKG_NAME="plumas-text-editor"
+VERSION="$(grep '^project(plumas-text-editor' "$ROOT/CMakeLists.txt" | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
 ARCH="$(dpkg --print-architecture)"
 DEB_FILE="${PKG_NAME}_${VERSION}_${ARCH}.deb"
 
@@ -173,8 +174,13 @@ require_command dpkg
 require_command dpkg-shlibdeps
 
 if [[ ! -f "$ICON_SOURCE" ]]; then
-    echo "Erro: icone de alta resolucao nao encontrado em $ICON_SOURCE" >&2
-    exit 1
+    if [[ -f "$ICON_FALLBACK" ]]; then
+        echo "==> plumas.png nao encontrado; usando $ICON_FALLBACK para icones."
+        ICON_SOURCE="$ICON_FALLBACK"
+    else
+        echo "Erro: icone nao encontrado. Esperado $ROOT/plumas.png ou $ICON_FALLBACK" >&2
+        exit 1
+    fi
 fi
 
 CMAKE_ARGS=(
@@ -193,8 +199,8 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
     cmake --build "$BUILD_DIR" -j"$(nproc)"
 fi
 
-if [[ ! -x "$BUILD_DIR/plumas-editor-texto" ]]; then
-    echo "Erro: binario nao encontrado em $BUILD_DIR/plumas-editor-texto" >&2
+if [[ ! -x "$BUILD_DIR/plumas-text-editor" ]]; then
+    echo "Erro: binario nao encontrado em $BUILD_DIR/plumas-text-editor" >&2
     exit 1
 fi
 

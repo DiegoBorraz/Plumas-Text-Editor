@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(plumas-editor-texto VERSION 0.1.0 LANGUAGES CXX)
+project(plumas-text-editor VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -94,18 +94,18 @@ target_compile_definitions(plumas_ui PRIVATE
     PLUMAS_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}"
 )
 
-add_executable(plumas-editor-texto src/main.cpp)
-target_link_libraries(plumas-editor-texto PRIVATE plumas_ui)
-target_compile_options(plumas-editor-texto PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
-target_compile_definitions(plumas-editor-texto PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+add_executable(plumas-text-editor src/main.cpp)
+target_link_libraries(plumas-text-editor PRIVATE plumas_ui)
+target_compile_options(plumas-text-editor PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
+target_compile_definitions(plumas-text-editor PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_options(plumas-editor-texto PRIVATE -Wl,-z,relro -Wl,-z,now -pie ${PLUMAS_SANITIZER_FLAGS})
+    target_link_options(plumas-text-editor PRIVATE -Wl,-z,relro -Wl,-z,now -pie ${PLUMAS_SANITIZER_FLAGS})
 endif()
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/packaging/debian/plumas-editor-texto.desktop.in
-    ${CMAKE_CURRENT_BINARY_DIR}/plumas-editor-texto.desktop
+    ${CMAKE_SOURCE_DIR}/packaging/debian/plumas-text-editor.desktop.in
+    ${CMAKE_CURRENT_BINARY_DIR}/plumas-text-editor.desktop
     @ONLY
 )
 configure_file(
@@ -115,10 +115,18 @@ configure_file(
 )
 
 set(PLUMAS_ICON_SOURCE ${CMAKE_SOURCE_DIR}/plumas.png)
-set(PLUMAS_ICON_NAME plumas-editor-texto)
+set(PLUMAS_ICON_FALLBACK ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp)
+set(PLUMAS_ICON_NAME plumas-text-editor)
 set(PLUMAS_ICON_SIZES 16 24 32 48 64 128 256 512)
 
 if(EXISTS "${PLUMAS_ICON_SOURCE}")
+    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_SOURCE}")
+elseif(EXISTS "${PLUMAS_ICON_FALLBACK}")
+    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_FALLBACK}")
+    message(STATUS "plumas.png not found; using ${PLUMAS_ICON_FALLBACK} for hicolor icons")
+endif()
+
+if(DEFINED PLUMAS_ICON_INPUT)
     find_program(PLUMAS_MAGICK_COMMAND NAMES magick convert)
 
     foreach(size IN LISTS PLUMAS_ICON_SIZES)
@@ -127,13 +135,13 @@ if(EXISTS "${PLUMAS_ICON_SOURCE}")
         add_custom_command(
             OUTPUT ${icon_output}
             COMMAND ${CMAKE_COMMAND}
-                -Dicon_source=${PLUMAS_ICON_SOURCE}
+                -Dicon_source=${PLUMAS_ICON_INPUT}
                 -Dsize=${size}
                 -Doutput_path=${icon_output}
                 -DPLUMAS_MAGICK_COMMAND=${PLUMAS_MAGICK_COMMAND}
                 -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
                 -P ${CMAKE_SOURCE_DIR}/cmake/GenerateAppIcons.cmake
-            DEPENDS ${PLUMAS_ICON_SOURCE}
+            DEPENDS ${PLUMAS_ICON_INPUT}
             COMMENT "Generating ${size}x${size} application icon"
         )
         list(APPEND PLUMAS_GENERATED_ICONS ${icon_output})
@@ -142,10 +150,10 @@ if(EXISTS "${PLUMAS_ICON_SOURCE}")
     add_custom_target(plumas_icons DEPENDS ${PLUMAS_GENERATED_ICONS})
 endif()
 
-install(TARGETS plumas-editor-texto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/plumas-editor-texto.desktop
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/plumas-text-editor.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
@@ -156,7 +164,7 @@ install(
 
 install(
     FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/plumas-editor-texto
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/plumas-text-editor
 )
 
 if(TARGET plumas_icons)

@@ -19,15 +19,15 @@ Config::Config() : path_(defaultPath()) {}
 std::filesystem::path Config::defaultPath() {
     if (const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
         xdgConfigHome != nullptr && isValidPathString(xdgConfigHome)) {
-        return std::filesystem::path(xdgConfigHome) / "plumas-editor-texto" / "config.json";
+        return std::filesystem::path(xdgConfigHome) / "plumas-text-editor" / "config.json";
     }
 
     const char* home = std::getenv("HOME");
     if (home != nullptr && isValidPathString(home)) {
-        return std::filesystem::path(home) / ".config" / "plumas-editor-texto" / "config.json";
+        return std::filesystem::path(home) / ".config" / "plumas-text-editor" / "config.json";
     }
 
-    return std::filesystem::path(".config") / "plumas-editor-texto" / "config.json";
+    return std::filesystem::path(".config") / "plumas-text-editor" / "config.json";
 }
 
 bool Config::load() {

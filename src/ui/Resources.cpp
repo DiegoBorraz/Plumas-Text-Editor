@@ -26,7 +26,7 @@ std::vector<std::filesystem::path> dataSearchDirectories() {
 
 #ifdef PLUMAS_INSTALL_DATADIR
     directories.emplace_back(
-        std::filesystem::path(PLUMAS_INSTALL_DATADIR) / "plumas-editor-texto");
+        std::filesystem::path(PLUMAS_INSTALL_DATADIR) / "plumas-text-editor");
 #endif
 
     if (const char* dataDirs = std::getenv("XDG_DATA_DIRS"); dataDirs != nullptr) {
@@ -36,7 +36,7 @@ std::vector<std::filesystem::path> dataSearchDirectories() {
             const std::string_view entry =
                 separator == std::string_view::npos ? remaining : remaining.substr(0, separator);
             if (!entry.empty()) {
-                directories.emplace_back(std::filesystem::path(entry) / "plumas-editor-texto");
+                directories.emplace_back(std::filesystem::path(entry) / "plumas-text-editor");
             }
             if (separator == std::string_view::npos) {
                 break;
@@ -47,7 +47,7 @@ std::vector<std::filesystem::path> dataSearchDirectories() {
 
     if (const char* home = std::getenv("HOME"); home != nullptr) {
         directories.emplace_back(
-            std::filesystem::path(home) / ".local" / "share" / "plumas-editor-texto");
+            std::filesystem::path(home) / ".local" / "share" / "plumas-text-editor");
     }
 
     return directories;

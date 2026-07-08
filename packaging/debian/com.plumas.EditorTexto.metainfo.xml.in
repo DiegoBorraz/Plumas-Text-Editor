@@ -7,7 +7,7 @@
     <p>Plumas Text Editor — lighter than Windows Notepad.</p>
     <p>A text editor with a GTK4/libadwaita interface, line numbers, and support for common text file formats.</p>
   </description>
-  <launchable type="desktop-id">plumas-editor-texto.desktop</launchable>
+  <launchable type="desktop-id">plumas-text-editor.desktop</launchable>
   <url type="homepage">@PLUMAS_HOMEPAGE@</url>
   <developer_name>@PLUMAS_DEVELOPER@</developer_name>
   <project_license>LicenseRef-Plumas-Free-Non-Commercial-1.0</project_license>
