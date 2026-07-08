@@ -1,5 +1,8 @@
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/Resources.hpp"
+#include "plumas/ui/UiHelpers.hpp"
+
+#include "plumas/core/FileIO.hpp"
 
 #include <optional>
 #include <string>
@@ -138,20 +141,23 @@ GtkWidget* createTitleBar(AppState* state) {
 
     GtkWidget* titleLabel = gtk_label_new(kWindowTitle);
     gtk_label_set_xalign(GTK_LABEL(titleLabel), 0.0f);
-    gtk_widget_add_css_class(titleLabel, "title-2");
+    gtk_widget_add_css_class(titleLabel, "app-title");
+    setLabelStyle(GTK_LABEL(titleLabel), kAppTitleFontSizePt, true);
 
     GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     if (hasBundledResource(kIconFileName)) {
         gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromResource());
-    } else if (const std::optional<std::string> iconPath = findFilesystemResourcePath(kIconFileName);
-               iconPath.has_value()) {
-        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
+    } else if (isSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
+        const std::optional<std::string> iconPath = findFilesystemResourcePath(kIconFileName);
+        if (iconPath.has_value()) {
+            gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
+        }
     }
     gtk_box_append(GTK_BOX(titleGroup), titleLabel);
 
     state->pathLabel = gtk_label_new("(new document)");
     gtk_label_set_xalign(GTK_LABEL(state->pathLabel), 0.5f);
-    gtk_widget_add_css_class(state->pathLabel, "dim-label");
+    gtk_widget_add_css_class(state->pathLabel, "document-path");
     gtk_label_set_ellipsize(GTK_LABEL(state->pathLabel), PANGO_ELLIPSIZE_MIDDLE);
     gtk_widget_set_hexpand(state->pathLabel, TRUE);
 

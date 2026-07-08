@@ -3,6 +3,9 @@
 #include "plumas/core/Document.hpp"
 
 #include <adwaita.h>
+#include <pango/pango.h>
+
+#include <algorithm>
 
 namespace plumas::ui {
 
@@ -58,6 +61,23 @@ void syncWindowTheme(AppState* state) {
     if (state->toastOverlay != nullptr) {
         setDarkClass(state->toastOverlay, isDark);
     }
+}
+
+void setLabelStyle(GtkLabel* label, const int fontSizePt, const bool bold) {
+    PangoAttrList* attributes = pango_attr_list_new();
+
+    if (bold) {
+        pango_attr_list_insert(attributes, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    }
+
+    if (fontSizePt > 0) {
+        pango_attr_list_insert(
+            attributes,
+            pango_attr_size_new(fontSizePt * PANGO_SCALE));
+    }
+
+    gtk_label_set_attributes(label, attributes);
+    pango_attr_list_unref(attributes);
 }
 
 } // namespace plumas::ui

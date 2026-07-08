@@ -34,6 +34,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     list(APPEND PLUMAS_COMPILE_FLAGS -fPIE)
 endif()
 
+set(PLUMAS_SANITIZER_FLAGS "")
+
+option(PLUMAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(PLUMAS_ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        list(APPEND PLUMAS_SANITIZER_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
+    else()
+        message(WARNING "Sanitizers are only supported with GCC or Clang.")
+    endif()
+endif()
+
 add_library(plumas_core
     src/core/Document.cpp
     src/core/Config.cpp
@@ -41,8 +52,11 @@ add_library(plumas_core
 )
 target_include_directories(plumas_core PUBLIC include)
 target_link_libraries(plumas_core PUBLIC nlohmann_json::nlohmann_json)
-target_compile_options(plumas_core PRIVATE ${PLUMAS_COMPILE_FLAGS})
+target_compile_options(plumas_core PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_compile_definitions(plumas_core PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+if(PLUMAS_SANITIZER_FLAGS)
+    target_link_options(plumas_core PUBLIC ${PLUMAS_SANITIZER_FLAGS})
+endif()
 
 set(PLUMAS_GRESOURCE_XML ${CMAKE_SOURCE_DIR}/resources/plumas.gresource.xml)
 set(PLUMAS_GRESOURCE_C ${CMAKE_CURRENT_BINARY_DIR}/plumas-resources.c)
@@ -67,13 +81,14 @@ add_library(plumas_ui
     src/ui/EditorView.cpp
     src/ui/TitleBar.cpp
     src/ui/Dialogs.cpp
+    src/ui/SearchReplace.cpp
     src/ui/UiHelpers.cpp
     src/ui/Resources.cpp
     ${PLUMAS_GRESOURCE_C}
 )
 target_include_directories(plumas_ui PUBLIC include)
 target_link_libraries(plumas_ui PUBLIC plumas_core PkgConfig::GTK4 PkgConfig::ADW PkgConfig::GIO)
-target_compile_options(plumas_ui PRIVATE ${PLUMAS_COMPILE_FLAGS})
+target_compile_options(plumas_ui PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_compile_definitions(plumas_ui PRIVATE
     $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>
     PLUMAS_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}"
@@ -81,11 +96,11 @@ target_compile_definitions(plumas_ui PRIVATE
 
 add_executable(plumas-editor-texto src/main.cpp)
 target_link_libraries(plumas-editor-texto PRIVATE plumas_ui)
-target_compile_options(plumas-editor-texto PRIVATE ${PLUMAS_COMPILE_FLAGS})
+target_compile_options(plumas-editor-texto PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_compile_definitions(plumas-editor-texto PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_options(plumas-editor-texto PRIVATE -Wl,-z,relro -Wl,-z,now -pie)
+    target_link_options(plumas-editor-texto PRIVATE -Wl,-z,relro -Wl,-z,now -pie ${PLUMAS_SANITIZER_FLAGS})
 endif()
 
 configure_file(

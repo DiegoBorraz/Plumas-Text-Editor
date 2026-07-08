@@ -2,6 +2,7 @@
 
 #include "plumas/ui/Dialogs.hpp"
 #include "plumas/ui/EditorView.hpp"
+#include "plumas/ui/SearchReplace.hpp"
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
@@ -69,7 +70,8 @@ GtkWidget* createFooter() {
 
     GtkWidget* tagline = gtk_label_new(kFooterTagline);
     gtk_label_set_xalign(GTK_LABEL(tagline), 0.5f);
-    gtk_widget_add_css_class(tagline, "dim-label");
+    gtk_widget_add_css_class(tagline, "footer-tagline");
+    setLabelStyle(GTK_LABEL(tagline), 14, true);
     gtk_widget_set_hexpand(tagline, TRUE);
 
     gtk_box_append(GTK_BOX(footer), tagline);
@@ -90,6 +92,83 @@ gboolean onCloseRequest(GtkWindow* /*window*/, gpointer userData) {
 
 void onDarkModeChanged(AdwStyleManager* /*styleManager*/, GParamSpec* /*pspec*/, gpointer userData) {
     syncWindowTheme(static_cast<AppState*>(userData));
+}
+
+void onResizePressed(
+    GtkGestureClick* gesture,
+    gint /*nPress*/,
+    gdouble x,
+    gdouble y,
+    gpointer userData) {
+    const GdkSurfaceEdge edge = static_cast<GdkSurfaceEdge>(GPOINTER_TO_INT(userData));
+    GtkWidget* widget = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
+    GtkNative* native = GTK_NATIVE(gtk_widget_get_root(widget));
+    GdkSurface* surface = gtk_native_get_surface(native);
+    if (surface == nullptr || !GDK_IS_TOPLEVEL(surface)) {
+        return;
+    }
+
+    GdkEventSequence* sequence =
+        gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture));
+    GdkEvent* event = gtk_gesture_get_last_event(GTK_GESTURE(gesture), sequence);
+    if (event == nullptr) {
+        return;
+    }
+
+    gdk_toplevel_begin_resize(
+        GDK_TOPLEVEL(surface),
+        edge,
+        gdk_event_get_device(event),
+        gdk_button_event_get_button(event),
+        x,
+        y,
+        gdk_event_get_time(event));
+}
+
+GtkWidget* createResizeHandle(
+    const GdkSurfaceEdge edge,
+    const GtkAlign halign,
+    const GtkAlign valign,
+    const int width,
+    const int height) {
+    GtkWidget* handle = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(handle, "resize-handle");
+    gtk_widget_set_size_request(handle, width, height);
+    gtk_widget_set_halign(handle, halign);
+    gtk_widget_set_valign(handle, valign);
+
+    GtkGesture* click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_PRIMARY);
+    g_signal_connect(click, "pressed", G_CALLBACK(onResizePressed), GINT_TO_POINTER(edge));
+    gtk_widget_add_controller(handle, GTK_EVENT_CONTROLLER(click));
+    return handle;
+}
+
+void addWindowResizeHandles(GtkWidget* overlay) {
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_NORTH, GTK_ALIGN_FILL, GTK_ALIGN_START, -1, 6));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_SOUTH, GTK_ALIGN_FILL, GTK_ALIGN_END, -1, 6));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_WEST, GTK_ALIGN_START, GTK_ALIGN_FILL, 6, -1));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_EAST, GTK_ALIGN_END, GTK_ALIGN_FILL, 6, -1));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_NORTH_EAST, GTK_ALIGN_END, GTK_ALIGN_START, 12, 12));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_NORTH_WEST, GTK_ALIGN_START, GTK_ALIGN_START, 12, 12));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_SOUTH_EAST, GTK_ALIGN_END, GTK_ALIGN_END, 12, 12));
+    gtk_overlay_add_overlay(
+        GTK_OVERLAY(overlay),
+        createResizeHandle(GDK_SURFACE_EDGE_SOUTH_WEST, GTK_ALIGN_START, GTK_ALIGN_END, 12, 12));
 }
 
 gboolean onWindowKey(
@@ -128,6 +207,11 @@ gboolean onWindowKey(
         return TRUE;
     }
 
+    if (keyval == GDK_KEY_f || keyval == GDK_KEY_F) {
+        toggleSearchReplaceBar(state);
+        return TRUE;
+    }
+
     if (keyval == GDK_KEY_q || keyval == GDK_KEY_Q) {
         if (state->document->isDirty()) {
             auto pending = std::make_unique<PendingAction>(PendingAction{state, closeWindow});
@@ -149,13 +233,17 @@ void buildMainWindow(AppState* state) {
     GdkRectangle screen{};
     if (monitor != nullptr) {
         gdk_monitor_get_geometry(monitor, &screen);
+        state->monitorMaxWidth = screen.width;
+        state->monitorMaxHeight = screen.height;
     }
 
+    const int defaultWidth = monitor != nullptr ? std::min(960, screen.width) : 960;
+    const int defaultHeight =
+        monitor != nullptr ? std::min(640, std::max(320, screen.height - 48)) : 640;
+
     state->window = GTK_WINDOW(adw_application_window_new(GTK_APPLICATION(state->app)));
-    gtk_window_set_default_size(
-        state->window,
-        monitor != nullptr ? std::min(960, screen.width) : 960,
-        monitor != nullptr ? std::min(640, screen.height) : 640);
+    gtk_window_set_default_size(state->window, defaultWidth, defaultHeight);
+    gtk_window_set_resizable(state->window, TRUE);
     gtk_window_set_title(state->window, kWindowTitle);
     gtk_window_set_decorated(state->window, FALSE);
     gtk_widget_add_css_class(GTK_WIDGET(state->window), "plumas-app");
@@ -164,15 +252,19 @@ void buildMainWindow(AppState* state) {
     gtk_widget_add_css_class(state->shell, "plumas-shell");
     gtk_widget_set_vexpand(state->shell, TRUE);
     gtk_widget_set_hexpand(state->shell, TRUE);
+    gtk_widget_set_overflow(state->shell, GTK_OVERFLOW_HIDDEN);
 
     state->toastOverlay = adw_toast_overlay_new();
     gtk_widget_add_css_class(state->toastOverlay, "plumas-shell-overlay");
     gtk_widget_set_vexpand(state->toastOverlay, TRUE);
     gtk_widget_set_hexpand(state->toastOverlay, TRUE);
+    gtk_widget_set_overflow(state->toastOverlay, GTK_OVERFLOW_HIDDEN);
 
     GtkWidget* rootBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(rootBox, "plumas-root");
     gtk_widget_set_vexpand(rootBox, TRUE);
     gtk_widget_set_hexpand(rootBox, TRUE);
+    gtk_widget_set_overflow(rootBox, GTK_OVERFLOW_HIDDEN);
 
     gtk_box_append(GTK_BOX(rootBox), createTitleBar(state));
 
@@ -182,12 +274,21 @@ void buildMainWindow(AppState* state) {
     gtk_box_append(GTK_BOX(rootBox), toolbar);
 
     GtkWidget* editorView = createEditorView(state);
+    GtkWidget* searchBar = createSearchReplaceBar(state);
+    gtk_box_append(GTK_BOX(rootBox), searchBar);
+
     gtk_widget_set_vexpand(editorView, TRUE);
     gtk_widget_set_hexpand(editorView, TRUE);
     gtk_box_append(GTK_BOX(rootBox), editorView);
     gtk_box_append(GTK_BOX(rootBox), createFooter());
 
-    adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(state->toastOverlay), rootBox);
+    GtkWidget* windowOverlay = gtk_overlay_new();
+    gtk_widget_set_vexpand(windowOverlay, TRUE);
+    gtk_widget_set_hexpand(windowOverlay, TRUE);
+    gtk_overlay_set_child(GTK_OVERLAY(windowOverlay), rootBox);
+    addWindowResizeHandles(windowOverlay);
+
+    adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(state->toastOverlay), windowOverlay);
     gtk_box_append(GTK_BOX(state->shell), state->toastOverlay);
     adw_application_window_set_content(
         ADW_APPLICATION_WINDOW(state->window),

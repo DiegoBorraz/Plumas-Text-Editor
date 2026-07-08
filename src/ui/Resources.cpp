@@ -1,5 +1,7 @@
 #include "plumas/ui/Resources.hpp"
 
+#include "plumas/core/FileIO.hpp"
+
 #include <gio/gio.h>
 
 #include <cstdlib>
@@ -58,11 +60,24 @@ std::string resourcePath(const char* fileName) {
 }
 
 bool hasBundledResource(const char* fileName) {
+    return isBundledResourceWithinSize(fileName, core::kMaxIconFileSizeBytes);
+}
+
+bool isBundledResourceWithinSize(const char* fileName, const std::size_t maxBytes) {
     g_autoptr(GBytes) data = g_resources_lookup_data(
         resourcePath(fileName).c_str(),
         G_RESOURCE_LOOKUP_FLAGS_NONE,
         nullptr);
-    return data != nullptr;
+    return data != nullptr && g_bytes_get_size(data) <= maxBytes;
+}
+
+bool isSafeFilesystemImagePath(const char* fileName, const std::size_t maxBytes) {
+    const std::optional<std::string> path = findFilesystemResourcePath(fileName);
+    if (!path.has_value()) {
+        return false;
+    }
+
+    return core::isSafeRegularFileSize(*path, maxBytes);
 }
 
 std::optional<std::string> findFilesystemResourcePath(const char* fileName) {

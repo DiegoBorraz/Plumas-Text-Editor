@@ -37,21 +37,14 @@ bool Config::load() {
         return true;
     }
 
-    const auto fileSize = std::filesystem::file_size(path_, error);
-    if (error || fileSize > kMaxConfigJsonSize) {
+    const FileReadResult fileContent = readSmallTextFile(path_, kMaxConfigJsonSize);
+    if (fileContent.error != FileIoError::None) {
         recentFiles_.clear();
         return false;
     }
 
-    std::ifstream file(path_);
-    if (!file.is_open()) {
-        recentFiles_.clear();
-        return true;
-    }
-
     try {
-        nlohmann::json data;
-        file >> data;
+        const nlohmann::json data = nlohmann::json::parse(fileContent.content);
         recentFiles_.clear();
 
         if (data.contains("recentFiles") && data["recentFiles"].is_array()) {

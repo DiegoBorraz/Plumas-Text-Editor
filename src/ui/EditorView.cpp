@@ -3,6 +3,8 @@
 
 #include "plumas/core/FileIO.hpp"
 
+#include <pango/pangocairo.h>
+
 #include <cstring>
 #include <string>
 
@@ -10,27 +12,72 @@ namespace plumas::ui {
 
 namespace {
 
-void updateLineNumbers(AppState* state) {
-    GtkTextBuffer* editorBuffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    const int lineCount = gtk_text_buffer_get_line_count(editorBuffer);
+void queueLineGutterRedraw(AppState* state) {
+    if (state->lineGutter != nullptr) {
+        gtk_widget_queue_draw(state->lineGutter);
+    }
+}
 
-    if (lineCount == state->lastLineCount) {
+void drawLineNumbers(
+    GtkDrawingArea* /*area*/,
+    cairo_t* cr,
+    const int width,
+    const int height,
+    gpointer userData) {
+    AppState* state = static_cast<AppState*>(userData);
+    if (state->textView == nullptr || state->editorScroll == nullptr) {
         return;
     }
 
-    state->lastLineCount = lineCount;
+    GtkTextView* textView = GTK_TEXT_VIEW(state->textView);
+    GtkAdjustment* adjustment =
+        gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll));
+    const double scrollY = gtk_adjustment_get_value(adjustment);
 
-    std::string numbers;
-    numbers.reserve(static_cast<std::size_t>(lineCount) * 4);
-    for (int line = 1; line <= lineCount; ++line) {
-        numbers += std::to_string(line);
-        if (line < lineCount) {
-            numbers += '\n';
+    cairo_set_source_rgb(cr, 0.09, 0.65, 0.66);
+    PangoLayout* layout = pango_cairo_create_layout(cr);
+    PangoContext* widgetContext = gtk_widget_get_pango_context(GTK_WIDGET(textView));
+    pango_layout_set_font_description(
+        layout,
+        pango_context_get_font_description(widgetContext));
+
+    int firstLineY = 0;
+    GtkTextIter firstIter;
+    gtk_text_view_get_line_at_y(textView, &firstIter, static_cast<int>(scrollY), &firstLineY);
+
+    int lineY = 0;
+    gtk_text_view_get_line_yrange(textView, &firstIter, &lineY, nullptr);
+    constexpr int topPadding = 8;
+    double y = static_cast<double>(lineY) - scrollY + topPadding;
+
+    GtkTextIter currentIter = firstIter;
+    while (y < height) {
+        if (gtk_text_iter_is_end(&currentIter)) {
+            break;
+        }
+
+        int lineHeight = 0;
+        gtk_text_view_get_line_yrange(textView, &currentIter, nullptr, &lineHeight);
+        if (lineHeight <= 0) {
+            break;
+        }
+
+        const int lineNumber = gtk_text_iter_get_line(&currentIter) + 1;
+        const std::string lineText = std::to_string(lineNumber);
+        pango_layout_set_text(layout, lineText.c_str(), -1);
+        pango_layout_set_width(layout, (width - 3) * PANGO_SCALE);
+        pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+
+        cairo_move_to(cr, 0, y);
+        pango_cairo_show_layout(cr, layout);
+
+        y += lineHeight;
+        if (!gtk_text_iter_forward_line(&currentIter)) {
+            break;
         }
     }
 
-    GtkTextBuffer* gutterBuffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->lineNumberView));
-    gtk_text_buffer_set_text(gutterBuffer, numbers.c_str(), -1);
+    g_object_unref(layout);
 }
 
 void onInsertText(
@@ -59,26 +106,12 @@ void onTextChanged(GtkTextBuffer* /*buffer*/, gpointer userData) {
     }
 
     state->document->markDirty();
-    updateLineNumbers(state);
     updateStatus(state);
+    queueLineGutterRedraw(state);
 }
 
-void onEditorScroll(GtkAdjustment* adjustment, gpointer userData) {
-    AppState* state = static_cast<AppState*>(userData);
-    if (state->syncingScroll) {
-        return;
-    }
-
-    GtkWidget* lineScroll = static_cast<GtkWidget*>(
-        g_object_get_data(G_OBJECT(state->lineNumberView), "line-scroll"));
-    if (lineScroll == nullptr) {
-        return;
-    }
-
-    GtkAdjustment* lineAdjustment = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(lineScroll));
-    state->syncingScroll = true;
-    gtk_adjustment_set_value(lineAdjustment, gtk_adjustment_get_value(adjustment));
-    state->syncingScroll = false;
+void onEditorScroll(GtkAdjustment* /*adjustment*/, gpointer userData) {
+    queueLineGutterRedraw(static_cast<AppState*>(userData));
 }
 
 } // namespace
@@ -90,9 +123,8 @@ void refreshEditor(AppState* state) {
     gtk_text_buffer_set_text(buffer, state->document->content().c_str(), -1);
 
     state->syncingEditor = false;
-    state->lastLineCount = 0;
-    updateLineNumbers(state);
     updateStatus(state);
+    queueLineGutterRedraw(state);
 }
 
 void syncEditorToDocument(AppState* state) {
@@ -122,64 +154,59 @@ bool isEditorWithinSizeLimit(AppState* state) {
 }
 
 GtkWidget* createEditorView(AppState* state) {
-    GtkWidget* editorPaned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    state->lineGutter = gtk_drawing_area_new();
+    gtk_widget_add_css_class(state->lineGutter, "line-numbers-gutter");
+    gtk_widget_set_size_request(state->lineGutter, 24, -1);
+    gtk_widget_set_vexpand(state->lineGutter, TRUE);
+    gtk_widget_set_hexpand(state->lineGutter, FALSE);
+    gtk_drawing_area_set_draw_func(
+        GTK_DRAWING_AREA(state->lineGutter),
+        drawLineNumbers,
+        state,
+        nullptr);
 
-    GtkWidget* lineScroll = gtk_scrolled_window_new();
+    state->editorScroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(
-        GTK_SCROLLED_WINDOW(lineScroll),
-        GTK_POLICY_NEVER,
-        GTK_POLICY_NEVER);
-    gtk_widget_set_size_request(lineScroll, 24, -1);
-    gtk_widget_set_vexpand(lineScroll, TRUE);
-
-    state->lineNumberView = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(state->lineNumberView), FALSE);
-    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(state->lineNumberView), FALSE);
-    gtk_text_view_set_monospace(GTK_TEXT_VIEW(state->lineNumberView), TRUE);
-    gtk_text_view_set_justification(GTK_TEXT_VIEW(state->lineNumberView), GTK_JUSTIFY_RIGHT);
-    gtk_widget_add_css_class(state->lineNumberView, "line-numbers");
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(lineScroll), state->lineNumberView);
-    g_object_set_data(G_OBJECT(state->lineNumberView), "line-scroll", lineScroll);
-
-    GtkWidget* editorScroll = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_policy(
-        GTK_SCROLLED_WINDOW(editorScroll),
+        GTK_SCROLLED_WINDOW(state->editorScroll),
         GTK_POLICY_AUTOMATIC,
         GTK_POLICY_AUTOMATIC);
-    gtk_widget_set_vexpand(editorScroll, TRUE);
-    gtk_widget_set_hexpand(editorScroll, TRUE);
+    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(state->editorScroll), FALSE);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(state->editorScroll), FALSE);
+    gtk_widget_set_vexpand(state->editorScroll, TRUE);
+    gtk_widget_set_hexpand(state->editorScroll, TRUE);
 
     state->textView = gtk_text_view_new();
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(state->textView), TRUE);
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(state->textView), GTK_WRAP_NONE);
+    gtk_widget_set_vexpand(state->textView, FALSE);
+    gtk_widget_set_hexpand(state->textView, FALSE);
     gtk_widget_add_css_class(state->textView, "editor-main");
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(editorScroll), state->textView);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(state->editorScroll), state->textView);
 
-    gtk_paned_set_start_child(GTK_PANED(editorPaned), lineScroll);
-    gtk_paned_set_shrink_start_child(GTK_PANED(editorPaned), FALSE);
-    gtk_paned_set_resize_start_child(GTK_PANED(editorPaned), FALSE);
-    gtk_paned_set_end_child(GTK_PANED(editorPaned), editorScroll);
-    gtk_paned_set_shrink_end_child(GTK_PANED(editorPaned), TRUE);
-    gtk_paned_set_resize_end_child(GTK_PANED(editorPaned), TRUE);
+    GtkWidget* editorRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(editorRow, "editor-row");
+    gtk_widget_set_vexpand(editorRow, TRUE);
+    gtk_widget_set_hexpand(editorRow, TRUE);
+    gtk_widget_set_overflow(editorRow, GTK_OVERFLOW_HIDDEN);
+    gtk_box_append(GTK_BOX(editorRow), state->lineGutter);
+    gtk_box_append(GTK_BOX(editorRow), state->editorScroll);
 
     GtkWidget* editorContainer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(editorContainer, "editor-workspace");
     gtk_widget_set_vexpand(editorContainer, TRUE);
     gtk_widget_set_hexpand(editorContainer, TRUE);
     gtk_widget_set_overflow(editorContainer, GTK_OVERFLOW_HIDDEN);
     gtk_widget_set_margin_start(editorContainer, 20);
     gtk_widget_set_margin_end(editorContainer, 20);
     gtk_widget_set_margin_bottom(editorContainer, 20);
-    gtk_box_append(GTK_BOX(editorContainer), editorPaned);
-
-    gtk_widget_set_vexpand(editorPaned, TRUE);
-    gtk_widget_set_hexpand(editorPaned, TRUE);
-    gtk_widget_set_overflow(editorPaned, GTK_OVERFLOW_HIDDEN);
+    gtk_box_append(GTK_BOX(editorContainer), editorRow);
 
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
     g_signal_connect(buffer, "insert-text", G_CALLBACK(onInsertText), state);
     g_signal_connect(buffer, "changed", G_CALLBACK(onTextChanged), state);
 
-    GtkAdjustment* editorVadjustment = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(editorScroll));
+    GtkAdjustment* editorVadjustment =
+        gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll));
     g_signal_connect(editorVadjustment, "value-changed", G_CALLBACK(onEditorScroll), state);
 
     return editorContainer;

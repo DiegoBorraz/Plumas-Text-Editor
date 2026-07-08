@@ -38,12 +38,12 @@ bool isRegularFileDescriptor(int fd) {
     return S_ISREG(status.st_mode);
 }
 
-std::optional<std::string> readLimited(int fd) {
+std::optional<std::string> readLimited(int fd, const std::size_t maxBytes) {
     std::string content;
     content.reserve(4096);
 
     char buffer[8192];
-    while (content.size() <= kMaxFileSizeBytes) {
+    while (content.size() <= maxBytes) {
         const ssize_t bytesRead = ::read(fd, buffer, sizeof(buffer));
         if (bytesRead < 0) {
             return std::nullopt;
@@ -53,7 +53,7 @@ std::optional<std::string> readLimited(int fd) {
         }
 
         const std::size_t newSize = content.size() + static_cast<std::size_t>(bytesRead);
-        if (newSize > kMaxFileSizeBytes) {
+        if (newSize > maxBytes) {
             return std::nullopt;
         }
 
@@ -61,6 +61,50 @@ std::optional<std::string> readLimited(int fd) {
     }
 
     return std::nullopt;
+}
+
+FileReadResult readRegularTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
+    FileReadResult result;
+
+    if (!isValidPathString(path.string())) {
+        result.error = FileIoError::InvalidPath;
+        return result;
+    }
+
+    std::error_code error;
+    if (std::filesystem::is_symlink(path, error)) {
+        result.error = FileIoError::Symlink;
+        return result;
+    }
+
+    if (std::filesystem::is_directory(path, error)) {
+        result.error = FileIoError::NotRegularFile;
+        return result;
+    }
+
+    const int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) {
+        result.error = errorFromErrno();
+        return result;
+    }
+
+    if (!isRegularFileDescriptor(fd)) {
+        ::close(fd);
+        result.error = FileIoError::NotRegularFile;
+        return result;
+    }
+
+    const std::optional<std::string> content = readLimited(fd, maxBytes);
+    ::close(fd);
+
+    if (!content.has_value()) {
+        result.error = FileIoError::TooLarge;
+        return result;
+    }
+
+    result.content = *content;
+    result.error = FileIoError::None;
+    return result;
 }
 
 } // namespace
@@ -217,46 +261,81 @@ bool fileExistsForOverwrite(const std::filesystem::path& path) {
 }
 
 FileReadResult readTextFile(const std::filesystem::path& path) {
-    FileReadResult result;
+    return readRegularTextFile(path, kMaxFileSizeBytes);
+}
 
+FileReadResult readSmallTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
+    return readRegularTextFile(path, maxBytes);
+}
+
+bool isSafeRegularFileSize(const std::filesystem::path& path, const std::size_t maxBytes) {
     if (!isValidPathString(path.string())) {
-        result.error = FileIoError::InvalidPath;
-        return result;
+        return false;
     }
 
     std::error_code error;
     if (std::filesystem::is_symlink(path, error)) {
-        result.error = FileIoError::Symlink;
-        return result;
-    }
-
-    if (std::filesystem::is_directory(path, error)) {
-        result.error = FileIoError::NotRegularFile;
-        return result;
+        return false;
     }
 
     const int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) {
-        result.error = errorFromErrno();
-        return result;
+        return false;
     }
 
     if (!isRegularFileDescriptor(fd)) {
         ::close(fd);
-        result.error = FileIoError::NotRegularFile;
-        return result;
+        return false;
     }
 
-    const std::optional<std::string> content = readLimited(fd);
+    struct stat status {};
+    const bool withinLimit = ::fstat(fd, &status) == 0
+        && static_cast<std::size_t>(status.st_size) <= maxBytes;
     ::close(fd);
+    return withinLimit;
+}
 
-    if (!content.has_value()) {
-        result.error = FileIoError::TooLarge;
+TextReplaceResult replaceAllInText(
+    const std::string& text,
+    const std::string& findText,
+    const std::string& replaceText,
+    const std::size_t maxReplacements,
+    const std::size_t maxOutputBytes,
+    const std::atomic<bool>* cancelFlag) {
+    TextReplaceResult result;
+    result.text = text;
+
+    if (findText.empty()) {
         return result;
     }
 
-    result.content = *content;
-    result.error = FileIoError::None;
+    std::size_t position = 0;
+    while (position <= result.text.size()) {
+        if (cancelFlag != nullptr && cancelFlag->load()) {
+            result.cancelled = true;
+            return result;
+        }
+
+        if (result.replacements >= maxReplacements) {
+            result.limitReached = true;
+            return result;
+        }
+
+        const std::size_t matchPosition = result.text.find(findText, position);
+        if (matchPosition == std::string::npos) {
+            return result;
+        }
+
+        result.text.replace(matchPosition, findText.size(), replaceText);
+        if (result.text.size() > maxOutputBytes) {
+            result.limitReached = true;
+            return result;
+        }
+
+        position = matchPosition + replaceText.size();
+        ++result.replacements;
+    }
+
     return result;
 }
 
