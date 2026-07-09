@@ -1,8 +1,9 @@
 #include "plumas/core/Config.hpp"
 #include "plumas/core/FileIO.hpp"
 
+#include "plumas/platform/Paths.hpp"
+
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <nlohmann/json.hpp>
 
@@ -17,17 +18,7 @@ constexpr std::size_t kMaxRecentFiles = 10;
 Config::Config() : path_(defaultPath()) {}
 
 std::filesystem::path Config::defaultPath() {
-    if (const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
-        xdgConfigHome != nullptr && isValidPathString(xdgConfigHome)) {
-        return std::filesystem::path(xdgConfigHome) / "plumas-text-editor" / "config.json";
-    }
-
-    const char* home = std::getenv("HOME");
-    if (home != nullptr && isValidPathString(home)) {
-        return std::filesystem::path(home) / ".config" / "plumas-text-editor" / "config.json";
-    }
-
-    return std::filesystem::path(".config") / "plumas-text-editor" / "config.json";
+    return platform::configDirectory() / "config.json";
 }
 
 bool Config::load() {

@@ -10,6 +10,12 @@ packaging/debian/staging/
 packaging/debian/dist/
 *.deb
 
+# Windows installer
+build-win/
+packaging/windows/staging/
+packaging/windows/dist/
+*.exe
+
 # CPack
 _CPack_Packages/
 

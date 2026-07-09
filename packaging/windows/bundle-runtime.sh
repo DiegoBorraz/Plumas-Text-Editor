@@ -52,6 +52,17 @@ fi
 GDK_PIXBUF_LOADERS="${MINGW_PREFIX}/lib/gdk-pixbuf-2.0/2.10.0/loaders"
 if [[ -d "$GDK_PIXBUF_LOADERS" ]]; then
     cp -r "${GDK_PIXBUF_LOADERS}/." "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders/"
+    if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
+        gdk-pixbuf-query-loaders > "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+    fi
 fi
+
+for share_dir in icons themes gtk-4.0; do
+    src="${MINGW_PREFIX}/share/${share_dir}"
+    if [[ -d "$src" ]]; then
+        mkdir -p "$STAGING/share/${share_dir}"
+        cp -r "${src}/." "$STAGING/share/${share_dir}/"
+    fi
+done
 
 echo "Bundle criado em $STAGING"

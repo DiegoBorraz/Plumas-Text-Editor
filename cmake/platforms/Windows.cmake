@@ -18,14 +18,7 @@ plumas_configure_platform_target(plumas_platform)
 
 target_link_libraries(plumas_core PUBLIC plumas_platform)
 
-set(PLUMAS_ICON_SOURCE ${CMAKE_SOURCE_DIR}/plumas.png)
-set(PLUMAS_ICON_FALLBACK ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp)
-
-if(EXISTS "${PLUMAS_ICON_SOURCE}")
-    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_SOURCE}")
-elseif(EXISTS "${PLUMAS_ICON_FALLBACK}")
-    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_FALLBACK}")
-endif()
+set_target_properties(plumas-text-editor PROPERTIES WIN32_EXECUTABLE TRUE)
 
 install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(

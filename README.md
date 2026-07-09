@@ -1,6 +1,6 @@
 # Plumas Text Editor
 
-Editor de texto leve para Linux, escrito em C++20 com GTK4 e libadwaita. Focado em abrir, editar e salvar arquivos de texto comuns, com interface em inglês, números de linha, busca/substituição e empacotamento `.deb` para Ubuntu/Debian.
+Editor de texto leve multiplataforma (Linux e Windows; macOS em preparação), escrito em C++20 com GTK4 e libadwaita. Focado em abrir, editar e salvar arquivos de texto comuns, com interface em inglês, números de linha, busca/substituição e empacotamento `.deb` (Ubuntu/Debian) e instalador `.exe` (Windows).
 
 **Homepage:** [https://github.com/DiegoBorraz/Plumas-Text-Editor](https://github.com/DiegoBorraz/Plumas-Text-Editor)
 
@@ -52,8 +52,8 @@ Requer `python3-pil` (`sudo apt install python3-pil`) ou ImageMagick (`magick`).
 | Build | CMake 3.20+, GNUInstallDirs |
 | Configuração | nlohmann/json |
 | Recursos | GResource (`glib-compile-resources`) |
-| Empacotamento | `.deb` manual (`dpkg-deb`) + metadados AppStream |
-| CI | GitHub Actions (build Release + ASan/UBSan) |
+| Empacotamento | `.deb` (Debian/Ubuntu) + instalador Inno Setup (Windows) |
+| CI | GitHub Actions (Linux + Windows + ASan/UBSan) |
 
 ### Dependências de sistema (Ubuntu/Debian)
 
@@ -103,12 +103,12 @@ plumas-editor-texto/
 ├── resources/
 │   ├── plumas.gresource.xml     # Bundle GResource (CSS + ícone webp)
 │   └── plumas-icon.webp         # Ícone da barra de título (embutido no binário)
-├── packaging/debian/
-│   ├── build-deb.sh             # Script que gera o instalador .deb
-│   ├── metadata.sh              # Metadados do pacote (mantenedor, licença)
-│   └── dist/                    # Saída do instalador (.deb) — gerado no build
+├── packaging/
+│   ├── debian/                  # Instalador .deb (Linux)
+│   └── windows/                 # Bundle GTK + Inno Setup (.exe)
 ├── cmake/
-│   └── GenerateAppIcons.cmake   # Redimensiona plumas.png → ícones hicolor
+│   ├── GenerateAppIcons.cmake   # Redimensiona plumas.png → ícones hicolor
+│   └── platforms/               # Linux.cmake, Windows.cmake, Darwin.cmake
 ├── .github/workflows/ci.yml     # Pipeline de CI
 └── CMakeLists.txt
 ```
@@ -118,25 +118,26 @@ plumas-editor-texto/
 O código segue uma separação em **duas camadas**:
 
 1. **`plumas::core`** — domínio puro: documento, I/O de arquivos e configuração. Não depende de GTK.
-2. **`plumas::ui`** — interface: janelas, widgets, sinais GTK e estado visual (`AppState`).
+2. **`plumas::platform`** — paths, I/O POSIX/Win32 e detecção de chrome nativo da janela.
+3. **`plumas::ui`** — interface: janelas, widgets, sinais GTK e estado visual (`AppState`).
 
 ### Convenções adotadas
 
-- **Namespaces** por módulo (`plumas::core`, `plumas::ui`)
+- **Namespaces** por módulo (`plumas::core`, `plumas::platform`, `plumas::ui`)
 - **Headers públicos** em `include/plumas/...`, implementação em `src/...`
 - **Estado da aplicação** centralizado em `AppState` (ponteiros GTK + `Document` + `Config`)
 - **Funções livres** na camada UI para ações (`tryOpenPath`, `saveDocument`, `refreshEditor`) em vez de classes widget gigantes
-- **CMake** com bibliotecas estáticas `plumas_core` e `plumas_ui`, executável fino em `main.cpp`
+- **CMake** com bibliotecas estáticas `plumas_core`, `plumas_platform` e `plumas_ui`; regras por SO em `cmake/platforms/`
 - **Instalação** via `cmake --install` com `GNUInstallDirs` (FHS: `/usr/bin`, `/usr/share/...`)
 
 ### Boas práticas aplicadas
 
 - C++20 com extensões desabilitadas (`CMAKE_CXX_EXTENSIONS OFF`)
 - Compilação defensiva: `-Wall -Wextra -Wpedantic`, `-fstack-protector-strong`, `_FORTIFY_SOURCE=2`, PIE e `relro/now` no link
-- I/O com APIs POSIX (`open`, `read`, `write`, `mkstemp`, `rename`) onde a segurança importa
+- I/O com APIs POSIX ou Win32 via `plumas::platform` (symlinks, tamanho, escrita atômica)
 - Escrita atômica de arquivos (temporário + `fsync` + `rename`)
 - Recursos embutidos com GResource para instalação reproduzível
-- Config em `XDG_CONFIG_HOME` (fallback `~/.config`)
+- Config em `XDG_CONFIG_HOME` (Linux), `%APPDATA%` (Windows) ou `~/Library/Application Support` (macOS)
 - `.gitignore` para artefatos de build, staging e pacotes
 - CI com job dedicado a AddressSanitizer e UndefinedBehaviorSanitizer (`-DPLUMAS_ENABLE_SANITIZERS=ON`)
 
@@ -245,6 +246,39 @@ Ou pelo menu de aplicativos: **Plumas Text Editor**.
 ```bash
 sudo apt remove plumas-text-editor
 ```
+
+## Build e instalador no Windows
+
+Requisitos no [MSYS2](https://www.msys2.org/) (shell **UCRT64**):
+
+```bash
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-gcc \
+  mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-ninja \
+  mingw-w64-ucrt-x86_64-gtk4 \
+  mingw-w64-ucrt-x86_64-libadwaita \
+  mingw-w64-ucrt-x86_64-nlohmann-json \
+  mingw-w64-ucrt-x86_64-pkg-config
+```
+
+Para gerar o instalador `.exe`, instale também o [Inno Setup](https://jrsoftware.org/isinfo.php) e deixe `iscc` no `PATH`.
+
+```bash
+./packaging/windows/build-installer.sh
+```
+
+O script compila em `build-win/`, monta o bundle GTK em `packaging/windows/staging/` e gera:
+
+| Item | Valor |
+|------|--------|
+| **Pasta** | `packaging/windows/dist/` |
+| **Instalador** | `PlumasTextEditor-0.1.0-setup.exe` |
+| **Config do usuário** | `%APPDATA%\plumas-text-editor\config.json` |
+
+Checklist de QA manual: [`packaging/windows/QA.md`](packaging/windows/QA.md).
+
+No Windows a janela usa **decorations nativas** do sistema; no Linux mantém barra de título customizada.
 
 ## Licença
 

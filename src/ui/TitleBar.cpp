@@ -3,6 +3,7 @@
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/FileIO.hpp"
+#include "plumas/platform/Paths.hpp"
 
 #include <optional>
 #include <string>
@@ -152,15 +153,17 @@ GtkWidget* createTitleBar(AppState* state) {
     gtk_label_set_ellipsize(GTK_LABEL(state->pathLabel), PANGO_ELLIPSIZE_MIDDLE);
     gtk_widget_set_hexpand(state->pathLabel, TRUE);
 
-    GtkWidget* windowControls = createWindowControls(state);
-    gtk_widget_set_halign(windowControls, GTK_ALIGN_END);
-
     gtk_box_append(GTK_BOX(titleBar), titleGroup);
     gtk_box_append(GTK_BOX(titleBar), state->pathLabel);
-    gtk_box_append(GTK_BOX(titleBar), windowControls);
 
-    attachTitleBarDrag(titleGroup, state);
-    attachTitleBarDrag(state->pathLabel, state);
+    if (!platform::usesNativeWindowChrome()) {
+        GtkWidget* windowControls = createWindowControls(state);
+        gtk_widget_set_halign(windowControls, GTK_ALIGN_END);
+        gtk_box_append(GTK_BOX(titleBar), windowControls);
+
+        attachTitleBarDrag(titleGroup, state);
+        attachTitleBarDrag(state->pathLabel, state);
+    }
 
     return titleBar;
 }

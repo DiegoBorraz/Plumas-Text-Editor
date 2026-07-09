@@ -2,11 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, feature/windows-installer]
   pull_request:
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,3 +51,30 @@ jobs:
 
       - name: Build (ASan/UBSan)
         run: cmake --build build-asan
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msys2-location: D:\a\_temp\msys64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-libadwaita
+            mingw-w64-ucrt-x86_64-nlohmann-json
+            mingw-w64-ucrt-x86_64-pkg-config
+
+      - name: Configure (Release)
+        run: cmake -B build-win -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Release)
+        run: cmake --build build-win

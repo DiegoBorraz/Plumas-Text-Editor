@@ -6,6 +6,8 @@
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
+#include "plumas/platform/Paths.hpp"
+
 #include <algorithm>
 
 namespace plumas::ui {
@@ -255,7 +257,7 @@ void buildMainWindow(AppState* state) {
     gtk_window_set_default_size(state->window, defaultWidth, defaultHeight);
     gtk_window_set_resizable(state->window, TRUE);
     gtk_window_set_title(state->window, kWindowTitle);
-    gtk_window_set_decorated(state->window, FALSE);
+    gtk_window_set_decorated(state->window, platform::usesNativeWindowChrome());
     gtk_widget_add_css_class(GTK_WIDGET(state->window), "plumas-app");
 
     state->shell = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -295,7 +297,9 @@ void buildMainWindow(AppState* state) {
     gtk_widget_set_vexpand(windowOverlay, TRUE);
     gtk_widget_set_hexpand(windowOverlay, TRUE);
     gtk_overlay_set_child(GTK_OVERLAY(windowOverlay), rootBox);
-    addWindowResizeHandles(windowOverlay, state);
+    if (!platform::usesNativeWindowChrome()) {
+        addWindowResizeHandles(windowOverlay, state);
+    }
 
     adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(state->toastOverlay), windowOverlay);
     gtk_box_append(GTK_BOX(state->shell), state->toastOverlay);
