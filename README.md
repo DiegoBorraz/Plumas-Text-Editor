@@ -145,16 +145,17 @@ O código segue uma separação em **duas camadas**:
 
 | Área | Medida |
 |------|--------|
-| Leitura de arquivos | `O_RDONLY \| O_NOFOLLOW \| O_CLOEXEC`; rejeita symlinks e não-arquivos regulares |
-| Escrita de arquivos | Bloqueia destino symlink; escrita atômica via `mkstemp` + `rename` |
-| Paths | Normalização (`weakly_canonical`), limite de 4096 caracteres, sem `\0` |
+| Leitura de arquivos | Caminho resolvido com `weakly_canonical` (um symlink abre o arquivo de destino); depois `O_RDONLY \| O_NOFOLLOW \| O_CLOEXEC` impede troca por symlink no meio da operação; rejeita não-arquivos regulares; lê em uma única alocação |
+| Escrita de arquivos | Escrita atômica via `mkstemp` + `fsync` + `rename` + `fsync` do diretório; preserva as permissões do arquivo substituído |
+| Paths | Normalização (`weakly_canonical`), limite de 4096 caracteres, sem `\0`; conversão UTF-8 explícita (nomes com acento no Windows) |
 | Extensões | Whitelist (`.txt`, `.md`, `.py`, `.sh`, etc.) em abrir e salvar |
 | Tamanho | Máx. 50 MB por documento; config JSON máx. 1 MB |
-| Config | Leitura com `O_NOFOLLOW`; `chmod 600` ao salvar; paths recentes absolutos e sem symlink |
+| Config | Leitura com `O_NOFOLLOW`; gravação atômica já com permissão `600`; paths recentes absolutos e com extensão permitida |
 | Ícone | Validação de tamanho (máx. 512 KB) antes de carregar WebP do disco ou GResource |
-| Replace All | Execução em thread separada com cancelamento; limite de 1 milhão de substituições |
+| Replace All | Thread separada com cancelamento, algoritmo linear, limite de 1 milhão de substituições; fechar a janela cancela e aguarda a thread |
 | Editor | Bloqueio de inserção além do limite de caracteres; verificação antes de salvar |
-| Build | Sanitizers opcionais para detectar memory leaks e UB em desenvolvimento/CI |
+| Build | Sanitizers opcionais para detectar memory leaks e UB em desenvolvimento/CI; testes do `core` rodam no CI |
+| Memória | Renderer `cairo` por padrão (~100 MB a menos que GL); o texto existe só no buffer do editor; undo limitado a 100 níveis |
 
 O editor **não executa** scripts, não interpreta XML/HTML e não abre rede — superfície de ataque limitada a I/O local e dependências do sistema (GTK, Pango, nlohmann/json).
 
@@ -186,6 +187,16 @@ cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug -DPLUMAS_ENABLE_SANITIZERS=ON
 cmake --build build-asan
 ./build-asan/plumas-text-editor
 ```
+
+## Testes
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DPLUMAS_ENABLE_SANITIZERS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Os testes (`tests/core_tests.cpp`) não dependem de GTK nem de framework externo. Para medir memória: `GSK_RENDERER` sobrescreve o renderer padrão (`cairo`).
 
 ## Build e instalação no Ubuntu
 

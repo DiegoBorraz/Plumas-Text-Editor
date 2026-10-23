@@ -7,8 +7,9 @@
 namespace plumas::ui {
 
 GtkWidget* createEditorView(AppState* state);
-void refreshEditor(AppState* state);
-void syncEditorToDocument(AppState* state);
-bool isEditorWithinSizeLimit(AppState* state);
+// Replaces the whole text without marking the document dirty.
+void setEditorText(AppState* state, const char* text);
+// The editor buffer is the only copy of the text; this hands out a snapshot.
+GCharPtr copyEditorText(AppState* state);
 
 } // namespace plumas::ui

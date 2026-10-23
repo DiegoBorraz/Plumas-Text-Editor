@@ -2,21 +2,18 @@
 
 #include "plumas/platform/FileBackend.hpp"
 
-#include <unordered_set>
-
 #include <algorithm>
 #include <cctype>
 
 namespace plumas::core {
 
-bool isValidPathString(const std::string& path) {
-    if (path.empty() || path.size() > kMaxPathLength) {
-        return false;
-    }
-    if (path.find('\0') != std::string::npos) {
-        return false;
-    }
-    return true;
+std::filesystem::path pathFromUtf8(const std::string_view utf8) {
+    return std::filesystem::path(std::u8string(utf8.begin(), utf8.end()));
+}
+
+std::string pathToUtf8(const std::filesystem::path& path) {
+    const std::u8string utf8 = path.u8string();
+    return std::string(utf8.begin(), utf8.end());
 }
 
 std::optional<std::filesystem::path> normalizePath(const std::string& path) {
@@ -24,9 +21,9 @@ std::optional<std::filesystem::path> normalizePath(const std::string& path) {
         return std::nullopt;
     }
 
-    const std::filesystem::path input(path);
+    const std::filesystem::path input = pathFromUtf8(path);
     std::error_code error;
-    const std::filesystem::path normalized = std::filesystem::weakly_canonical(input, error);
+    std::filesystem::path normalized = std::filesystem::weakly_canonical(input, error);
     if (!error) {
         return normalized;
     }
@@ -103,15 +100,8 @@ const std::vector<std::string>& allowedTextFileExtensionNames() {
 
 namespace {
 
-const std::unordered_set<std::string>& allowedTextFileExtensionSet() {
-    static const std::unordered_set<std::string> extensions(
-        allowedTextFileExtensionNames().begin(),
-        allowedTextFileExtensionNames().end());
-    return extensions;
-}
-
 std::string extensionNameLowercase(const std::filesystem::path& path) {
-    const std::string extension = path.extension().string();
+    const std::string extension = pathToUtf8(path.extension());
     if (extension.size() < 2 || extension[0] != '.') {
         return {};
     }
@@ -135,36 +125,11 @@ bool isAllowedTextFilePath(const std::filesystem::path& path) {
         return false;
     }
 
-    return allowedTextFileExtensionSet().contains(extensionName);
+    const std::vector<std::string>& allowed = allowedTextFileExtensionNames();
+    return std::find(allowed.begin(), allowed.end(), extensionName) != allowed.end();
 }
 
-bool isSafeRecentFilePath(const std::filesystem::path& path) {
-    if (!isValidPathString(path.string())) {
-        return false;
-    }
-
-    if (!path.is_absolute()) {
-        return false;
-    }
-
-    std::error_code error;
-    if (std::filesystem::is_symlink(path, error)) {
-        return false;
-    }
-
-    return true;
-}
-
-bool fileExistsForOverwrite(const std::filesystem::path& path) {
-    std::error_code error;
-    return std::filesystem::exists(path, error) && !error;
-}
-
-FileReadResult readTextFile(const std::filesystem::path& path) {
-    return platform::readRegularTextFile(path, kMaxFileSizeBytes);
-}
-
-FileReadResult readSmallTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
+FileReadResult readTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
     return platform::readRegularTextFile(path, maxBytes);
 }
 
@@ -173,55 +138,70 @@ bool isSafeRegularFileSize(const std::filesystem::path& path, const std::size_t 
 }
 
 TextReplaceResult replaceAllInText(
-    const std::string& text,
-    const std::string& findText,
-    const std::string& replaceText,
+    const std::string_view text,
+    const std::string_view findText,
+    const std::string_view replaceText,
     const std::size_t maxReplacements,
     const std::size_t maxOutputBytes,
     const std::atomic<bool>* cancelFlag) {
     TextReplaceResult result;
-    result.text = text;
-
     if (findText.empty()) {
         return result;
     }
 
+    // Builds the output in one pass. Replacing in place would shift the tail of
+    // the string on every match, which is quadratic on large documents.
     std::size_t position = 0;
-    while (position <= result.text.size()) {
-        if (cancelFlag != nullptr && cancelFlag->load()) {
+    while (true) {
+        if (cancelFlag != nullptr && cancelFlag->load(std::memory_order_relaxed)) {
+            result = {};
             result.cancelled = true;
             return result;
         }
 
+        const std::size_t matchPosition = text.find(findText, position);
+        if (matchPosition == std::string_view::npos) {
+            break;
+        }
+
         if (result.replacements >= maxReplacements) {
+            result = {};
             result.limitReached = true;
             return result;
         }
 
-        const std::size_t matchPosition = result.text.find(findText, position);
-        if (matchPosition == std::string::npos) {
-            return result;
+        if (result.replacements == 0) {
+            result.text.reserve(text.size());
         }
-
-        result.text.replace(matchPosition, findText.size(), replaceText);
+        result.text.append(text.substr(position, matchPosition - position));
+        result.text.append(replaceText);
         if (result.text.size() > maxOutputBytes) {
+            result = {};
             result.limitReached = true;
             return result;
         }
 
-        position = matchPosition + replaceText.size();
+        position = matchPosition + findText.size();
         ++result.replacements;
     }
 
+    if (result.replacements == 0) {
+        return result;
+    }
+
+    result.text.append(text.substr(position));
+    if (result.text.size() > maxOutputBytes) {
+        result = {};
+        result.limitReached = true;
+    }
     return result;
 }
 
-bool writeTextFileAtomic(const std::filesystem::path& path, const std::string& content) {
-    return platform::writeTextFileAtomic(path, content);
-}
-
-bool restrictConfigPermissions(const std::filesystem::path& path) {
-    return platform::restrictConfigPermissions(path);
+bool writeTextFileAtomic(
+    const std::filesystem::path& path,
+    const std::string_view content,
+    const FilePermissions permissions) {
+    return platform::writeTextFileAtomic(path, content, permissions);
 }
 
 } // namespace plumas::core

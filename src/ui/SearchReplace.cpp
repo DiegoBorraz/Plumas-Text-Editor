@@ -5,6 +5,7 @@
 
 #include "plumas/core/FileIO.hpp"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -223,97 +224,67 @@ void onReplaceClicked(GtkButton* /*button*/, gpointer userData) {
     performFind(state, false);
 }
 
-struct ReplaceAllContext {
-    AppState* state = nullptr;
-    std::string sourceText;
-    std::string findText;
-    std::string replaceText;
-    core::TextReplaceResult result;
-    AdwDialog* progressDialog = nullptr;
-};
+using ReplaceAllTaskRef = std::shared_ptr<ReplaceAllTask>;
 
-void finishReplaceAllJob(AppState* state) {
-    if (state->replaceAllJob == nullptr) {
-        return;
-    }
-
-    if (state->replaceAllJob->worker.joinable()) {
-        state->replaceAllJob->worker.join();
-    }
-
-    state->replaceAllJob.reset();
+// C callbacks get their own reference so the task outlives every one of them.
+gpointer newTaskRef(const ReplaceAllTaskRef& task) {
+    return new ReplaceAllTaskRef(task);
 }
 
-void closeReplaceAllDialog(ReplaceAllContext* context) {
-    if (context->progressDialog != nullptr) {
-        adw_dialog_close(context->progressDialog);
-        context->progressDialog = nullptr;
-    }
+ReplaceAllTaskRef takeTaskRef(gpointer userData) {
+    const std::unique_ptr<ReplaceAllTaskRef> ref(static_cast<ReplaceAllTaskRef*>(userData));
+    return *ref;
 }
 
 gboolean applyReplaceAllOnMainThread(gpointer userData) {
-    auto* context = static_cast<ReplaceAllContext*>(userData);
-    AppState* state = context->state;
+    const ReplaceAllTaskRef task = takeTaskRef(userData);
+    if (task->abandoned) {
+        return G_SOURCE_REMOVE;
+    }
 
-    closeReplaceAllDialog(context);
-    finishReplaceAllJob(state);
+    AppState* state = task->state;
+    task->finished = true;
+    if (state->replaceAllJob != nullptr && state->replaceAllJob->worker.joinable()) {
+        state->replaceAllJob->worker.join();
+    }
+    state->replaceAllJob.reset();
 
-    if (!context->result.cancelled) {
-        if (context->result.limitReached) {
-            showToast(state, "Replace All stopped at the safety limit.");
-        } else if (context->result.replacements > 0) {
-            state->syncingEditor = true;
-            GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-            gtk_text_buffer_set_text(buffer, context->result.text.c_str(), -1);
-            state->document->setContent(context->result.text);
-            state->syncingEditor = false;
-            updateStatus(state);
-            showToast(state, "All matches replaced.");
-        } else {
-            showToast(state, "No matches found.");
-        }
-    } else {
+    if (task->progressDialog != nullptr) {
+        adw_dialog_close(task->progressDialog);
+        task->progressDialog = nullptr;
+    }
+
+    const core::TextReplaceResult& result = task->result;
+    if (result.cancelled) {
         showToast(state, "Replace All cancelled.");
+    } else if (result.limitReached) {
+        showToast(state, "Replace All stopped at the safety limit.");
+    } else if (result.replacements > 0) {
+        setEditorText(state, result.text.c_str());
+        state->document->markDirty();
+        updateStatus(state);
+        showToast(state, "All matches replaced.");
+    } else {
+        showToast(state, "No matches found.");
     }
 
     clearSearchHighlight(state);
-    delete context;
     return G_SOURCE_REMOVE;
 }
 
 void onReplaceAllDialogFinished(GObject* source, GAsyncResult* result, gpointer userData) {
-    auto* context = static_cast<ReplaceAllContext*>(userData);
-    const char* chosen =
-        adw_alert_dialog_choose_finish(ADW_ALERT_DIALOG(source), result);
+    const ReplaceAllTaskRef task = takeTaskRef(userData);
+    const char* chosen = adw_alert_dialog_choose_finish(ADW_ALERT_DIALOG(source), result);
 
-    if (chosen != nullptr && g_strcmp0(chosen, "cancel") == 0
-        && context->state->replaceAllJob != nullptr) {
-        context->state->replaceAllJob->cancelRequested.store(true);
+    // Closing the dialog after the job ends also reports "cancel"; ignore it.
+    if (!task->finished && g_strcmp0(chosen, "cancel") == 0) {
+        task->cancelRequested.store(true);
     }
-}
-
-void startReplaceAllWorker(ReplaceAllContext* context) {
-    AppState* state = context->state;
-    state->replaceAllJob = std::make_unique<ReplaceAllJob>();
-    ReplaceAllJob* job = state->replaceAllJob.get();
-
-    job->worker = std::thread([context, job]() {
-        context->result = core::replaceAllInText(
-            context->sourceText,
-            context->findText,
-            context->replaceText,
-            core::kMaxReplaceAllReplacements,
-            core::kMaxFileSizeBytes,
-            &job->cancelRequested);
-        g_idle_add(applyReplaceAllOnMainThread, context);
-    });
 }
 
 void onReplaceAllClicked(GtkButton* /*button*/, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
-    const std::string findText = getFindText(state);
-    const std::string replaceText = getReplaceText(state);
-
+    std::string findText = getFindText(state);
     if (findText.empty()) {
         return;
     }
@@ -323,41 +294,41 @@ void onReplaceAllClicked(GtkButton* /*button*/, gpointer userData) {
         return;
     }
 
-    syncEditorToDocument(state);
-    const std::string& sourceText = state->document->content();
-    if (sourceText.size() > core::kMaxFileSizeBytes) {
-        showToast(state, "Document exceeds the 50 MB limit.");
+    auto task = std::make_shared<ReplaceAllTask>();
+    task->state = state;
+    task->sourceText = copyEditorText(state);
+    task->findText = std::move(findText);
+    task->replaceText = getReplaceText(state);
+    if (task->sourceText == nullptr) {
         return;
     }
-
-    auto* context = new ReplaceAllContext{
-        state,
-        sourceText,
-        findText,
-        replaceText,
-        {},
-        nullptr,
-    };
 
     AdwDialog* dialog = adw_alert_dialog_new(
         "Replace All",
         "Replacing matches. This may take a moment on large documents.");
-    adw_alert_dialog_add_responses(
-        ADW_ALERT_DIALOG(dialog),
-        "cancel",
-        "Cancel",
-        nullptr);
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "Cancel", nullptr);
     adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
-    context->progressDialog = dialog;
-
+    task->progressDialog = dialog;
     adw_alert_dialog_choose(
         ADW_ALERT_DIALOG(dialog),
         GTK_WIDGET(state->window),
         nullptr,
         onReplaceAllDialogFinished,
-        context);
+        newTaskRef(task));
 
-    startReplaceAllWorker(context);
+    state->replaceAllJob = std::make_unique<ReplaceAllJob>();
+    state->replaceAllJob->task = task;
+    state->replaceAllJob->worker = std::thread([task]() {
+        task->result = core::replaceAllInText(
+            task->sourceText.get(),
+            task->findText,
+            task->replaceText,
+            core::kMaxReplaceAllReplacements,
+            core::kMaxFileSizeBytes,
+            &task->cancelRequested);
+        task->sourceText.reset();
+        g_idle_add(applyReplaceAllOnMainThread, newTaskRef(task));
+    });
 }
 
 void onCloseSearchClicked(GtkButton* /*button*/, gpointer userData) {
@@ -492,10 +463,6 @@ void toggleSearchReplaceBar(AppState* state) {
     }
 
     showSearchReplaceBar(state);
-}
-
-bool isSearchReplaceBarVisible(const AppState* state) {
-    return state->searchBar != nullptr && gtk_widget_get_visible(state->searchBar);
 }
 
 } // namespace plumas::ui

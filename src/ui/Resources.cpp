@@ -52,14 +52,14 @@ std::optional<std::string> findFilesystemResourcePath(const char* fileName) {
     for (const std::filesystem::path& directory : platform::dataDirectories()) {
         const std::filesystem::path candidate = directory / fileName;
         if (fileExists(candidate)) {
-            return candidate.string();
+            return core::pathToUtf8(candidate);
         }
     }
 
     const std::filesystem::path candidate =
         platform::executableDirectory() / "resources" / fileName;
     if (fileExists(candidate)) {
-        return candidate.string();
+        return core::pathToUtf8(candidate);
     }
 
     return std::nullopt;

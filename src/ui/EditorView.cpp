@@ -6,7 +6,6 @@
 #include <pango/pangocairo.h>
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 
 namespace plumas::ui {
@@ -23,28 +22,7 @@ constexpr double kEditorBorderRadius = 6.0;
 constexpr int kLineGutterPaddingTop = 8;
 constexpr int kLineGutterPaddingRight = 3;
 constexpr int kEditorPadding = 8;
-
-GtkCssProvider* gEditorLayerProvider = nullptr;
-
-void ensureEditorLayerProvider() {
-    if (gEditorLayerProvider != nullptr) {
-        return;
-    }
-
-    gEditorLayerProvider = gtk_css_provider_new();
-    gtk_css_provider_load_from_string(
-        gEditorLayerProvider,
-        ".editor-layer { background-color: transparent; min-height: 0; }");
-}
-
-void applyEditorLayerStyle(GtkWidget* widget) {
-    ensureEditorLayerProvider();
-    gtk_widget_add_css_class(widget, "editor-layer");
-    gtk_style_context_add_provider(
-        gtk_widget_get_style_context(widget),
-        GTK_STYLE_PROVIDER(gEditorLayerProvider),
-        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-}
+constexpr guint kMaxUndoLevels = 100;
 
 void paintLineGutterBackground(cairo_t* cr, const double width, const double height) {
     GdkRGBA backgroundColor;
@@ -204,41 +182,26 @@ void onEditorScroll(GtkAdjustment* /*adjustment*/, gpointer userData) {
 
 } // namespace
 
-void refreshEditor(AppState* state) {
-    state->syncingEditor = true;
-
+void setEditorText(AppState* state, const char* text) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    gtk_text_buffer_set_text(buffer, state->document->content().c_str(), -1);
 
+    // Irreversible so the undo history (and the memory it holds) starts empty.
+    state->syncingEditor = true;
+    gtk_text_buffer_begin_irreversible_action(buffer);
+    gtk_text_buffer_set_text(buffer, text, -1);
+    gtk_text_buffer_end_irreversible_action(buffer);
     state->syncingEditor = false;
+
     updateStatus(state);
     queueLineGutterRedraw(state);
 }
 
-void syncEditorToDocument(AppState* state) {
-    GtkTextBuffer* editorBuffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    GtkTextIter start;
-    GtkTextIter end;
-    gtk_text_buffer_get_bounds(editorBuffer, &start, &end);
-    char* text = gtk_text_buffer_get_text(editorBuffer, &start, &end, FALSE);
-    state->document->setContent(text != nullptr ? text : "");
-    g_free(text);
-}
-
-bool isEditorWithinSizeLimit(AppState* state) {
+GCharPtr copyEditorText(AppState* state) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
     GtkTextIter start;
     GtkTextIter end;
     gtk_text_buffer_get_bounds(buffer, &start, &end);
-    char* text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
-    const gsize byteCount = text != nullptr ? std::strlen(text) : 0;
-    g_free(text);
-
-    if (byteCount > core::kMaxFileSizeBytes) {
-        showToast(state, "Document exceeds the 50 MB limit.");
-        return false;
-    }
-    return true;
+    return GCharPtr(gtk_text_buffer_get_text(buffer, &start, &end, FALSE), g_free);
 }
 
 GtkWidget* createEditorView(AppState* state) {
@@ -276,7 +239,7 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_widget_set_hexpand(state->editorScroll, TRUE);
     gtk_widget_set_halign(state->editorScroll, GTK_ALIGN_FILL);
     gtk_widget_set_valign(state->editorScroll, GTK_ALIGN_FILL);
-    applyEditorLayerStyle(state->editorScroll);
+    gtk_widget_add_css_class(state->editorScroll, "editor-layer");
 
     state->textView = gtk_text_view_new();
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(state->textView), TRUE);
@@ -287,7 +250,7 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
     gtk_widget_set_vexpand(state->textView, FALSE);
     gtk_widget_set_hexpand(state->textView, FALSE);
-    applyEditorLayerStyle(state->textView);
+    gtk_widget_add_css_class(state->textView, "editor-layer");
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(state->editorScroll), state->textView);
     gtk_overlay_add_overlay(GTK_OVERLAY(editorPanel), state->editorScroll);
 
@@ -310,6 +273,8 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_box_append(GTK_BOX(editorContainer), editorRow);
 
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
+    // Unlimited undo would keep every edit of a long session in memory.
+    gtk_text_buffer_set_max_undo_levels(buffer, kMaxUndoLevels);
     g_signal_connect(buffer, "insert-text", G_CALLBACK(onInsertText), state);
     g_signal_connect(buffer, "changed", G_CALLBACK(onTextChanged), state);
 

@@ -100,3 +100,8 @@ box.search-replace-bar button label {
   opacity: 1;
   font-size: 14px;
 }
+.editor-layer,
+.editor-layer > text {
+  background-color: transparent;
+  min-height: 0;
+}

@@ -97,6 +97,9 @@ void onOpen(
 } // namespace
 
 int run(int argc, char** argv) {
+    // The software renderer uses ~100 MB less RSS than the GL/Vulkan renderers
+    // and is fast enough for a plain text editor. GSK_RENDERER still overrides it.
+    g_setenv("GSK_RENDERER", "cairo", FALSE);
     adw_init();
 
     AppState state{};

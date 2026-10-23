@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(plumas-text-editor VERSION 0.1.0 LANGUAGES CXX)
+project(plumas-text-editor VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -84,7 +84,6 @@ add_library(plumas_ui
     src/ui/SearchReplace.cpp
     src/ui/UiHelpers.cpp
     src/ui/Resources.cpp
-    ${PLUMAS_GRESOURCE_C}
 )
 target_include_directories(plumas_ui PUBLIC include)
 target_link_libraries(plumas_ui PUBLIC plumas_core PkgConfig::GTK4 PkgConfig::ADW PkgConfig::GIO)
@@ -94,9 +93,13 @@ target_compile_definitions(plumas_ui PRIVATE
     PLUMAS_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}"
 )
 
-add_executable(plumas-text-editor src/main.cpp)
+# The generated GResource registers itself from a constructor; linking it
+# directly into the executable keeps the linker from dropping it.
+add_executable(plumas-text-editor src/main.cpp ${PLUMAS_GRESOURCE_C})
 target_link_libraries(plumas-text-editor PRIVATE plumas_ui)
-target_compile_options(plumas-text-editor PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
+target_compile_options(plumas-text-editor PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${PLUMAS_COMPILE_FLAGS}>
+    ${PLUMAS_SANITIZER_FLAGS})
 target_compile_definitions(plumas-text-editor PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 
 if(WIN32)
@@ -105,4 +108,13 @@ elseif(APPLE)
     include(${CMAKE_SOURCE_DIR}/cmake/platforms/Darwin.cmake)
 else()
     include(${CMAKE_SOURCE_DIR}/cmake/platforms/Linux.cmake)
+endif()
+
+option(PLUMAS_BUILD_TESTS "Build the core unit tests" ON)
+if(PLUMAS_BUILD_TESTS)
+    enable_testing()
+    add_executable(plumas_core_tests tests/core_tests.cpp)
+    target_link_libraries(plumas_core_tests PRIVATE plumas_core)
+    target_compile_options(plumas_core_tests PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
+    add_test(NAME plumas_core_tests COMMAND plumas_core_tests)
 endif()

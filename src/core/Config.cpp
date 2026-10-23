@@ -4,7 +4,6 @@
 #include "plumas/platform/Paths.hpp"
 
 #include <algorithm>
-#include <fstream>
 #include <nlohmann/json.hpp>
 
 namespace plumas::core {
@@ -12,6 +11,15 @@ namespace plumas::core {
 namespace {
 
 constexpr std::size_t kMaxRecentFiles = 10;
+
+std::optional<std::string> normalizeRecentPath(const std::string& path) {
+    const std::optional<std::filesystem::path> normalized = normalizePath(path);
+    if (!normalized.has_value() || !normalized->is_absolute()
+        || !isAllowedTextFilePath(*normalized)) {
+        return std::nullopt;
+    }
+    return pathToUtf8(*normalized);
+}
 
 } // namespace
 
@@ -28,7 +36,7 @@ bool Config::load() {
         return true;
     }
 
-    const FileReadResult fileContent = readSmallTextFile(path_, kMaxConfigJsonSize);
+    const FileReadResult fileContent = readTextFile(path_, kMaxConfigJsonSize);
     if (fileContent.error != FileIoError::None) {
         recentFiles_.clear();
         return false;
@@ -44,13 +52,11 @@ bool Config::load() {
                     continue;
                 }
 
-                const std::optional<std::filesystem::path> normalized =
-                    normalizePath(entry.get<std::string>());
-                if (!normalized.has_value() || !isSafeRecentFilePath(*normalized)) {
-                    continue;
+                std::optional<std::string> normalized =
+                    normalizeRecentPath(entry.get<std::string>());
+                if (normalized.has_value() && recentFiles_.size() < kMaxRecentFiles) {
+                    recentFiles_.push_back(std::move(*normalized));
                 }
-
-                recentFiles_.push_back(normalized->string());
             }
         }
     } catch (const nlohmann::json::exception&) {
@@ -68,16 +74,7 @@ bool Config::save() const {
     nlohmann::json data;
     data["recentFiles"] = recentFiles_;
 
-    std::ofstream file(path_);
-    if (!file.is_open()) {
-        return false;
-    }
-
-    file << data.dump(2);
-    file.close();
-
-    restrictConfigPermissions(path_);
-    return true;
+    return writeTextFileAtomic(path_, data.dump(2), FilePermissions::OwnerOnly);
 }
 
 const std::vector<std::string>& Config::recentFiles() const {
@@ -89,13 +86,12 @@ void Config::addRecentFile(const std::string& path) {
         return;
     }
 
-    const std::optional<std::filesystem::path> normalized = normalizePath(path);
-    if (!normalized.has_value() || !isSafeRecentFilePath(*normalized)
-        || !isAllowedTextFilePath(*normalized)) {
+    const std::optional<std::string> normalized = normalizeRecentPath(path);
+    if (!normalized.has_value()) {
         return;
     }
 
-    const std::string normalizedPath = normalized->string();
+    const std::string& normalizedPath = *normalized;
     auto it = std::find(recentFiles_.begin(), recentFiles_.end(), normalizedPath);
     if (it != recentFiles_.end()) {
         recentFiles_.erase(it);

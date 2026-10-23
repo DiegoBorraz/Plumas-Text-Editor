@@ -29,6 +29,9 @@ jobs:
       - name: Build (Release)
         run: cmake --build build
 
+      - name: Test (Release)
+        run: ctest --test-dir build --output-on-failure
+
   sanitizers:
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +54,9 @@ jobs:
 
       - name: Build (ASan/UBSan)
         run: cmake --build build-asan
+
+      - name: Test (ASan/UBSan)
+        run: ctest --test-dir build-asan --output-on-failure
 
   build-windows:
     runs-on: windows-latest
@@ -78,3 +84,6 @@ jobs:
 
       - name: Build (Release)
         run: cmake --build build-win
+
+      - name: Test (Release)
+        run: ctest --test-dir build-win --output-on-failure

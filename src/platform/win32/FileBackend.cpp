@@ -8,7 +8,7 @@
 
 #include <optional>
 #include <string>
-#include <vector>
+#include <string_view>
 
 #include <algorithm>
 #include <windows.h>
@@ -17,11 +17,12 @@ namespace plumas::platform {
 
 namespace {
 
-bool isValidPathString(const std::string& path) {
-    if (path.empty() || path.size() > core::kMaxPathLength) {
-        return false;
-    }
-    return path.find('\0') == std::string::npos;
+// path.string() throws on Windows for names outside the ANSI code page, so
+// validate the native wide string instead.
+bool isValidPathString(const std::filesystem::path& path) {
+    const std::wstring& native = path.native();
+    return !native.empty() && native.size() <= core::kMaxPathLength
+        && native.find(L'\0') == std::wstring::npos;
 }
 
 core::FileIoError errorFromWin32(const DWORD errorCode) {
@@ -45,28 +46,42 @@ bool isReparsePoint(const std::filesystem::path& path) {
 }
 
 std::optional<std::string> readLimitedHandle(const HANDLE handle, const std::size_t maxBytes) {
-    std::string content;
-    content.reserve(4096);
+    LARGE_INTEGER fileSize {};
+    if (!GetFileSizeEx(handle, &fileSize) || fileSize.QuadPart < 0
+        || static_cast<unsigned long long>(fileSize.QuadPart) > maxBytes) {
+        return std::nullopt;
+    }
 
-    char buffer[8192];
-    while (content.size() <= maxBytes) {
+    // One allocation sized from the file; see the POSIX backend.
+    std::string content;
+    content.resize(static_cast<std::size_t>(fileSize.QuadPart));
+    std::size_t used = 0;
+
+    while (true) {
+        if (used == content.size()) {
+            if (content.size() >= maxBytes) {
+                char probe = 0;
+                DWORD extra = 0;
+                if (ReadFile(handle, &probe, 1, &extra, nullptr) && extra == 0) {
+                    return content;
+                }
+                return std::nullopt;
+            }
+            content.resize(std::min(maxBytes, std::max<std::size_t>(content.size() * 2, 4096)));
+        }
+
         DWORD bytesRead = 0;
-        if (!ReadFile(handle, buffer, sizeof(buffer), &bytesRead, nullptr)) {
+        const DWORD chunkSize = static_cast<DWORD>(
+            std::min<std::size_t>(content.size() - used, static_cast<std::size_t>(MAXDWORD)));
+        if (!ReadFile(handle, content.data() + used, chunkSize, &bytesRead, nullptr)) {
             return std::nullopt;
         }
         if (bytesRead == 0) {
+            content.resize(used);
             return content;
         }
-
-        const std::size_t newSize = content.size() + static_cast<std::size_t>(bytesRead);
-        if (newSize > maxBytes) {
-            return std::nullopt;
-        }
-
-        content.append(buffer, static_cast<std::size_t>(bytesRead));
+        used += static_cast<std::size_t>(bytesRead);
     }
-
-    return std::nullopt;
 }
 
 } // namespace
@@ -76,7 +91,7 @@ core::FileReadResult readRegularTextFile(
     const std::size_t maxBytes) {
     core::FileReadResult result;
 
-    if (!isValidPathString(path.string())) {
+    if (!isValidPathString(path)) {
         result.error = core::FileIoError::InvalidPath;
         return result;
     }
@@ -110,7 +125,7 @@ core::FileReadResult readRegularTextFile(
         return result;
     }
 
-    const std::optional<std::string> content = readLimitedHandle(handle, maxBytes);
+    std::optional<std::string> content = readLimitedHandle(handle, maxBytes);
     CloseHandle(handle);
 
     if (!content.has_value()) {
@@ -118,13 +133,13 @@ core::FileReadResult readRegularTextFile(
         return result;
     }
 
-    result.content = *content;
+    result.content = std::move(*content);
     result.error = core::FileIoError::None;
     return result;
 }
 
 bool isSafeRegularFileSize(const std::filesystem::path& path, const std::size_t maxBytes) {
-    if (!isValidPathString(path.string())) {
+    if (!isValidPathString(path)) {
         return false;
     }
 
@@ -153,12 +168,18 @@ bool isSafeRegularFileSize(const std::filesystem::path& path, const std::size_t 
     return withinLimit;
 }
 
-bool writeTextFileAtomic(const std::filesystem::path& path, const std::string& content) {
-    if (!isValidPathString(path.string())) {
+bool writeTextFileAtomic(
+    const std::filesystem::path& path,
+    const std::string_view content,
+    const core::FilePermissions /*permissions*/) {
+    // Windows ACLs are inherited from the parent directory, which is already
+    // per-user for %APPDATA%; there is no POSIX mode to preserve.
+    if (!isValidPathString(path)) {
         return false;
     }
 
-    if (std::filesystem::is_symlink(path) || isReparsePoint(path)) {
+    std::error_code error;
+    if (std::filesystem::is_symlink(path, error) || isReparsePoint(path)) {
         return false;
     }
 
@@ -167,7 +188,6 @@ bool writeTextFileAtomic(const std::filesystem::path& path, const std::string& c
         return false;
     }
 
-    std::error_code error;
     std::filesystem::create_directories(parent, error);
 
     const std::filesystem::path tempPath =
@@ -211,10 +231,6 @@ bool writeTextFileAtomic(const std::filesystem::path& path, const std::string& c
     }
 
     return true;
-}
-
-bool restrictConfigPermissions(const std::filesystem::path& path) {
-    return SetFileAttributesW(path.wstring().c_str(), FILE_ATTRIBUTE_NORMAL) != 0;
 }
 
 } // namespace plumas::platform
