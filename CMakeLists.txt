@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# _FORTIFY_SOURCE does nothing without optimization, so never build unoptimized
+# by accident.
+get_property(PLUMAS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT PLUMAS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 include(GNUInstallDirs)
 
 set(PLUMAS_DEVELOPER "Diego Avila" CACHE STRING "Developer name shown in desktop and AppStream metadata")
@@ -31,7 +38,23 @@ set(PLUMAS_COMPILE_FLAGS
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    list(APPEND PLUMAS_COMPILE_FLAGS -fPIE)
+    list(APPEND PLUMAS_COMPILE_FLAGS
+        -fPIE
+        -fstack-clash-protection
+        # Bounds checks in std::string/vector operator[]; negligible cost here.
+        -D_GLIBCXX_ASSERTIONS
+        # Some toolchains predefine level 3; -U avoids a redefinition clash.
+        $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:-U_FORTIFY_SOURCE>
+        $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:-D_FORTIFY_SOURCE=3>
+    )
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")
+        list(APPEND PLUMAS_COMPILE_FLAGS -fcf-protection=full)
+    endif()
+endif()
+
+set(PLUMAS_LINK_FLAGS "")
+if(NOT WIN32 AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    list(APPEND PLUMAS_LINK_FLAGS -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
 endif()
 
 set(PLUMAS_SANITIZER_FLAGS "")
@@ -53,7 +76,6 @@ add_library(plumas_core
 target_include_directories(plumas_core PUBLIC include)
 target_link_libraries(plumas_core PUBLIC nlohmann_json::nlohmann_json)
 target_compile_options(plumas_core PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
-target_compile_definitions(plumas_core PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 if(PLUMAS_SANITIZER_FLAGS)
     target_link_options(plumas_core PUBLIC ${PLUMAS_SANITIZER_FLAGS})
 endif()
@@ -89,7 +111,6 @@ target_include_directories(plumas_ui PUBLIC include)
 target_link_libraries(plumas_ui PUBLIC plumas_core PkgConfig::GTK4 PkgConfig::ADW PkgConfig::GIO)
 target_compile_options(plumas_ui PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_compile_definitions(plumas_ui PRIVATE
-    $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>
     PLUMAS_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}"
 )
 
@@ -97,10 +118,10 @@ target_compile_definitions(plumas_ui PRIVATE
 # directly into the executable keeps the linker from dropping it.
 add_executable(plumas-text-editor src/main.cpp ${PLUMAS_GRESOURCE_C})
 target_link_libraries(plumas-text-editor PRIVATE plumas_ui)
+target_link_options(plumas-text-editor PRIVATE ${PLUMAS_LINK_FLAGS})
 target_compile_options(plumas-text-editor PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${PLUMAS_COMPILE_FLAGS}>
     ${PLUMAS_SANITIZER_FLAGS})
-target_compile_definitions(plumas-text-editor PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 
 if(WIN32)
     include(${CMAKE_SOURCE_DIR}/cmake/platforms/Windows.cmake)

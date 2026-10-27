@@ -21,6 +21,10 @@ std::optional<std::filesystem::path> normalizePath(const std::string& path) {
         return std::nullopt;
     }
 
+    // Symlinks are resolved on purpose: editing a link edits its target, as in
+    // other editors, and the link itself survives the atomic save. The backend
+    // still refuses a final-component symlink, so a link swapped in after this
+    // point makes the read or write fail instead of being followed.
     const std::filesystem::path input = pathFromUtf8(path);
     std::error_code error;
     std::filesystem::path normalized = std::filesystem::weakly_canonical(input, error);
@@ -127,6 +131,57 @@ bool isAllowedTextFilePath(const std::filesystem::path& path) {
 
     const std::vector<std::string>& allowed = allowedTextFileExtensionNames();
     return std::find(allowed.begin(), allowed.end(), extensionName) != allowed.end();
+}
+
+bool isValidUtf8Text(const std::string_view text) {
+    const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());
+    const std::size_t size = text.size();
+    std::size_t index = 0;
+
+    while (index < size) {
+        const unsigned char lead = bytes[index];
+        if (lead == 0) {
+            return false;
+        }
+        if (lead < 0x80) {
+            ++index;
+            continue;
+        }
+
+        std::size_t length = 0;
+        unsigned char minSecond = 0x80;
+        unsigned char maxSecond = 0xBF;
+        if (lead >= 0xC2 && lead <= 0xDF) {
+            length = 2;
+        } else if (lead >= 0xE0 && lead <= 0xEF) {
+            length = 3;
+            if (lead == 0xE0) {
+                minSecond = 0xA0; // overlong
+            } else if (lead == 0xED) {
+                maxSecond = 0x9F; // UTF-16 surrogates
+            }
+        } else if (lead >= 0xF0 && lead <= 0xF4) {
+            length = 4;
+            if (lead == 0xF0) {
+                minSecond = 0x90; // overlong
+            } else if (lead == 0xF4) {
+                maxSecond = 0x8F; // above U+10FFFF
+            }
+        } else {
+            return false;
+        }
+
+        if (size - index < length || bytes[index + 1] < minSecond || bytes[index + 1] > maxSecond) {
+            return false;
+        }
+        for (std::size_t offset = 2; offset < length; ++offset) {
+            if ((bytes[index + offset] & 0xC0) != 0x80) {
+                return false;
+            }
+        }
+        index += length;
+    }
+    return true;
 }
 
 FileReadResult readTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {

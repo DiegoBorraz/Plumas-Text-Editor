@@ -60,6 +60,12 @@ void syncDirectory(const std::filesystem::path& directory) {
     }
 }
 
+// O_NONBLOCK keeps open() from hanging on a FIFO until the fstat check below
+// rejects it; reads from regular files ignore the flag.
+int openForReading(const std::filesystem::path& path) {
+    return ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+}
+
 bool isRegularFileDescriptor(const int fd) {
     struct stat status {};
     if (::fstat(fd, &status) != 0) {
@@ -121,18 +127,9 @@ core::FileReadResult readRegularTextFile(
         return result;
     }
 
-    std::error_code error;
-    if (std::filesystem::is_symlink(path, error)) {
-        result.error = core::FileIoError::Symlink;
-        return result;
-    }
-
-    if (std::filesystem::is_directory(path, error)) {
-        result.error = core::FileIoError::NotRegularFile;
-        return result;
-    }
-
-    const int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    // O_NOFOLLOW reports a symlink as ELOOP and fstat rejects directories, so
+    // no separate (racy) checks by path are needed.
+    const int fd = openForReading(path);
     if (fd < 0) {
         result.error = errorFromErrno();
         return result;
@@ -162,12 +159,7 @@ bool isSafeRegularFileSize(const std::filesystem::path& path, const std::size_t 
         return false;
     }
 
-    std::error_code error;
-    if (std::filesystem::is_symlink(path, error)) {
-        return false;
-    }
-
-    const int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    const int fd = openForReading(path);
     if (fd < 0) {
         return false;
     }

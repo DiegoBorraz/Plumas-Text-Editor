@@ -18,7 +18,12 @@ std::optional<std::string> normalizeRecentPath(const std::string& path) {
         || !isAllowedTextFilePath(*normalized)) {
         return std::nullopt;
     }
-    return pathToUtf8(*normalized);
+    // Linux file names are raw bytes; JSON (and the recent-files menu) need UTF-8.
+    std::string utf8 = pathToUtf8(*normalized);
+    if (!isValidUtf8Text(utf8)) {
+        return std::nullopt;
+    }
+    return utf8;
 }
 
 } // namespace
@@ -74,7 +79,10 @@ bool Config::save() const {
     nlohmann::json data;
     data["recentFiles"] = recentFiles_;
 
-    return writeTextFileAtomic(path_, data.dump(2), FilePermissions::OwnerOnly);
+    // Entries are validated on insert; replacing instead of throwing keeps an
+    // exception from unwinding through the GTK callbacks that call save().
+    const std::string text = data.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+    return writeTextFileAtomic(path_, text, FilePermissions::OwnerOnly);
 }
 
 const std::vector<std::string>& Config::recentFiles() const {

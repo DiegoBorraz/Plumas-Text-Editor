@@ -139,11 +139,9 @@ GtkWidget* createTitleBar(AppState* state) {
     GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     if (hasBundledResource(kIconFileName)) {
         gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromResource());
-    } else if (isSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
-        const std::optional<std::string> iconPath = findFilesystemResourcePath(kIconFileName);
-        if (iconPath.has_value()) {
-            gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
-        }
+    } else if (const std::optional<std::string> iconPath =
+                   findSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
+        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
     }
     gtk_box_append(GTK_BOX(titleGroup), titleLabel);
 

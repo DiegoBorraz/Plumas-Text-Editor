@@ -272,6 +272,23 @@ gboolean applyReplaceAllOnMainThread(gpointer userData) {
     return G_SOURCE_REMOVE;
 }
 
+} // namespace
+
+void abandonReplaceAll(AppState* state) {
+    if (state->replaceAllJob == nullptr) {
+        return;
+    }
+
+    const ReplaceAllTaskRef task = state->replaceAllJob->task;
+    // The job's destructor marks the task abandoned and joins the worker.
+    state->replaceAllJob.reset();
+    if (task->progressDialog != nullptr) {
+        adw_dialog_close(std::exchange(task->progressDialog, nullptr));
+    }
+}
+
+namespace {
+
 void onReplaceAllDialogFinished(GObject* source, GAsyncResult* result, gpointer userData) {
     const ReplaceAllTaskRef task = takeTaskRef(userData);
     const char* chosen = adw_alert_dialog_choose_finish(ADW_ALERT_DIALOG(source), result);

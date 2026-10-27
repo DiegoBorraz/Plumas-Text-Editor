@@ -39,13 +39,14 @@ bool isBundledResourceWithinSize(const char* fileName, const std::size_t maxByte
     return data != nullptr && g_bytes_get_size(data) <= maxBytes;
 }
 
-bool isSafeFilesystemImagePath(const char* fileName, const std::size_t maxBytes) {
-    const std::optional<std::string> path = findFilesystemResourcePath(fileName);
-    if (!path.has_value()) {
-        return false;
+std::optional<std::string> findSafeFilesystemImagePath(
+    const char* fileName,
+    const std::size_t maxBytes) {
+    std::optional<std::string> path = findFilesystemResourcePath(fileName);
+    if (!path.has_value() || !core::isSafeRegularFileSize(core::pathFromUtf8(*path), maxBytes)) {
+        return std::nullopt;
     }
-
-    return core::isSafeRegularFileSize(*path, maxBytes);
+    return path;
 }
 
 std::optional<std::string> findFilesystemResourcePath(const char* fileName) {

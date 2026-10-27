@@ -22,7 +22,9 @@ std::optional<std::string> Document::load(const std::string& path) {
     }
 
     FileReadResult result = readTextFile(*normalized, kMaxFileSizeBytes);
-    if (result.error != FileIoError::None) {
+    // Text GTK cannot hold would load as an empty or truncated buffer marked
+    // clean, and the next save would destroy the rest of the file.
+    if (result.error != FileIoError::None || !isValidUtf8Text(result.content)) {
         return std::nullopt;
     }
 

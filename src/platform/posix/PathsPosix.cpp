@@ -25,6 +25,11 @@ bool isValidEnvPath(const char* value) {
     return !path.empty() && path.size() <= core::kMaxPathLength && path.find('\0') == std::string_view::npos;
 }
 
+// A relative entry would resolve against the working directory.
+bool isAbsoluteEnvPath(const std::string_view value) {
+    return value.size() <= core::kMaxPathLength && !value.empty() && value.front() == '/';
+}
+
 } // namespace
 
 std::filesystem::path configDirectoryPosix() {
@@ -81,7 +86,7 @@ std::vector<std::filesystem::path> dataDirectoriesPosix() {
             const std::size_t separator = remaining.find(':');
             const std::string_view entry =
                 separator == std::string_view::npos ? remaining : remaining.substr(0, separator);
-            if (!entry.empty()) {
+            if (isAbsoluteEnvPath(entry)) {
                 directories.emplace_back(std::filesystem::path(entry) / kAppConfigDirName);
             }
             if (separator == std::string_view::npos) {
@@ -92,7 +97,7 @@ std::vector<std::filesystem::path> dataDirectoriesPosix() {
     }
 #endif
 
-    if (const char* home = std::getenv("HOME"); home != nullptr) {
+    if (const char* home = std::getenv("HOME"); isValidEnvPath(home) && isAbsoluteEnvPath(home)) {
 #if defined(__APPLE__)
         directories.emplace_back(
             std::filesystem::path(home) / "Library" / "Application Support" / kAppConfigDirName);

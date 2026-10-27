@@ -153,6 +153,34 @@ void testReadLimits() {
     CHECK(result.content.empty());
 }
 
+void testUtf8Validation() {
+    CHECK(isValidUtf8Text(""));
+    CHECK(isValidUtf8Text("plain ascii\n"));
+    CHECK(isValidUtf8Text("relat\xC3\xB3rio \xE2\x82\xAC \xF0\x9F\x98\x80"));
+    CHECK(!isValidUtf8Text(std::string("a\0b", 3)));
+    CHECK(!isValidUtf8Text("caf\xE9"));           // Latin-1
+    CHECK(!isValidUtf8Text("\xC0\xAF"));          // overlong '/'
+    CHECK(!isValidUtf8Text("\xE0\x80\xAF"));     // overlong '/'
+    CHECK(!isValidUtf8Text("\xED\xA0\x80"));     // surrogate
+    CHECK(!isValidUtf8Text("\xF4\x90\x80\x80")); // above U+10FFFF
+    CHECK(!isValidUtf8Text("\xE2\x82"));          // truncated
+    CHECK(!isValidUtf8Text("\x80"));              // stray continuation
+}
+
+void testDocumentRejectsNonText() {
+    TempDir dir;
+    const fs::path withNul = dir.path / "nul.txt";
+    std::ofstream(withNul, std::ios::binary) << std::string("head\0tail", 9);
+    const fs::path latin1 = dir.path / "latin1.txt";
+    std::ofstream(latin1, std::ios::binary) << "caf\xE9";
+
+    // Loading these would show an empty or cut buffer that saves over the file.
+    Document document;
+    CHECK(!document.load(pathToUtf8(withNul)).has_value());
+    CHECK(!document.load(pathToUtf8(latin1)).has_value());
+    CHECK(document.filePath().empty());
+}
+
 void testDocumentRoundTrip() {
     TempDir dir;
     const std::string path = pathToUtf8(dir.path / "relat\xC3\xB3rio.txt");
@@ -204,6 +232,34 @@ void testSavePreservesPermissions() {
     fs::create_symlink(file, link);
     CHECK(!writeTextFileAtomic(link, "x", FilePermissions::PreserveOrDefault));
     CHECK(readAll(file) == "new");
+    CHECK(readTextFile(link, 100).error == FileIoError::Symlink);
+}
+
+void testDocumentFollowsSymlink() {
+    TempDir dir;
+    const fs::path target = dir.path / "target.txt";
+    std::ofstream(target) << "original";
+    const fs::path link = dir.path / "link.txt";
+    fs::create_symlink(target, link);
+
+    // A document opened through a link edits the target and keeps the link.
+    Document document;
+    const std::optional<std::string> content = document.load(pathToUtf8(link));
+    CHECK(content.has_value() && *content == "original");
+    CHECK(document.filePath() == pathToUtf8(fs::canonical(target)));
+    CHECK(document.saveAs(pathToUtf8(link), "edited"));
+    CHECK(fs::is_symlink(link));
+    CHECK(readAll(target) == "edited");
+}
+
+void testFifoDoesNotBlock() {
+    TempDir dir;
+    const fs::path fifo = dir.path / "pipe.txt";
+    CHECK(::mkfifo(fifo.c_str(), 0600) == 0);
+
+    // Without a writer, a blocking open() would hang here forever.
+    CHECK(readTextFile(fifo, 100).error == FileIoError::NotRegularFile);
+    CHECK(!isSafeRegularFileSize(fifo, 100));
 }
 
 void testConfig() {
@@ -226,6 +282,12 @@ void testConfig() {
     CHECK(reloaded.load());
     CHECK(reloaded.recentFiles() == config.recentFiles());
 
+    // Linux file names need not be UTF-8; JSON cannot hold them.
+    Config nonUtf8;
+    nonUtf8.addRecentFile(pathToUtf8(dir.path) + "/caf\xE9.txt");
+    CHECK(nonUtf8.recentFiles().empty());
+    CHECK(nonUtf8.save());
+
     std::ofstream(Config::defaultPath()) << "{ not json";
     Config broken;
     CHECK(!broken.load());
@@ -241,9 +303,13 @@ int main() {
         {"replaceAllIsLinear", testReplaceAllIsLinear},
         {"paths", testPaths},
         {"readLimits", testReadLimits},
+        {"utf8Validation", testUtf8Validation},
+        {"documentRejectsNonText", testDocumentRejectsNonText},
         {"documentRoundTrip", testDocumentRoundTrip},
 #ifndef _WIN32
+        {"fifoDoesNotBlock", testFifoDoesNotBlock},
         {"savePreservesPermissions", testSavePreservesPermissions},
+        {"documentFollowsSymlink", testDocumentFollowsSymlink},
         {"config", testConfig},
 #endif
     };

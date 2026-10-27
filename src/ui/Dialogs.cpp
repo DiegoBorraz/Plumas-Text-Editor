@@ -1,6 +1,7 @@
 #include "plumas/ui/Dialogs.hpp"
 
 #include "plumas/ui/EditorView.hpp"
+#include "plumas/ui/SearchReplace.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/FileIO.hpp"
@@ -180,6 +181,7 @@ void tryOpenPath(AppState* state, const std::string& path) {
         return;
     }
 
+    abandonReplaceAll(state);
     state->document = std::move(document);
     setEditorText(state, content->c_str());
     persistRecent(state, state->document->filePath());
@@ -246,6 +248,7 @@ void closeWindow(AppState* state) {
 }
 
 void newDocument(AppState* state) {
+    abandonReplaceAll(state);
     state->document = std::make_unique<core::Document>();
     setEditorText(state, "");
     showToast(state, "New document created.");
