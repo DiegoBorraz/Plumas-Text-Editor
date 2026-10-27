@@ -26,11 +26,17 @@ box.resize-handle {
   background-color: transparent;
 }
 
-/* Title row: icon, tabs, drag space, window buttons. */
+/* Top row: icon, menu, drag space, window buttons. */
 
 .titlebar {
-  min-height: 40px;
+  min-height: 36px;
   padding-left: 8px;
+}
+
+/* Tabs row, between the menu and the editor. */
+
+.tab-row {
+  padding: 0 8px;
 }
 
 .title-logo {
@@ -38,7 +44,7 @@ box.resize-handle {
 }
 
 .tab-strip {
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
 .editor-tab {
@@ -53,9 +59,9 @@ box.resize-handle {
   background-color: rgba(0, 0, 0, 0.04);
 }
 
-/* The active tab shares the menu row's colour so the two read as one card. */
+/* The active tab is white like the editor, so the two read as one page. */
 .editor-tab.active {
-  background-color: #fbfbfb;
+  background-color: #ffffff;
 }
 
 .editor-tab .tab-close {
@@ -73,10 +79,6 @@ box.resize-handle {
   margin: 0 0 3px 4px;
   border-radius: 6px;
   -gtk-icon-size: 12px;
-}
-
-.window-controls {
-  margin-bottom: 8px;
 }
 
 .window-controls button {
@@ -100,8 +102,8 @@ box.resize-handle {
 /* Menu row. */
 
 menubar.plumas-menubar {
-  padding: 2px 6px 4px 6px;
-  background-color: #fbfbfb;
+  padding: 0;
+  background: none;
   box-shadow: none;
 }
 
@@ -120,7 +122,6 @@ menubar.plumas-menubar > item:selected {
 
 box.editor-row {
   background-color: #ffffff;
-  border-top: 1px solid #e5e5e5;
 }
 
 textview.editor-text,

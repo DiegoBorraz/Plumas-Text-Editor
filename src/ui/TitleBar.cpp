@@ -132,8 +132,8 @@ GtkWidget* createLogo() {
     return nullptr;
 }
 
-// Win11 Notepad layout: icon, tabs and "+", empty drag space, window buttons.
-GtkWidget* createTabRow(AppState* state) {
+// Top row: icon, File/Edit/View, empty drag space, window buttons.
+GtkWidget* createMenuRow(AppState* state) {
     const bool customChrome = !platform::usesNativeWindowChrome();
 
     GtkWidget* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -146,7 +146,9 @@ GtkWidget* createTabRow(AppState* state) {
         }
     }
 
-    gtk_box_append(GTK_BOX(row), createTabStrip(state));
+    GtkWidget* menuBar = createMenuBar();
+    gtk_widget_set_valign(menuBar, GTK_ALIGN_CENTER);
+    gtk_box_append(GTK_BOX(row), menuBar);
 
     GtkWidget* dragArea = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_set_hexpand(dragArea, TRUE);
@@ -164,9 +166,13 @@ GtkWidget* createTabRow(AppState* state) {
 GtkWidget* createTitleBar(AppState* state) {
     GtkWidget* chrome = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_add_css_class(chrome, "window-chrome");
+    gtk_box_append(GTK_BOX(chrome), createMenuRow(state));
 
-    gtk_box_append(GTK_BOX(chrome), createTabRow(state));
-    gtk_box_append(GTK_BOX(chrome), createMenuBar());
+    // Tabs sit right above the editor, so the active one joins the page.
+    GtkWidget* tabRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(tabRow, "tab-row");
+    gtk_box_append(GTK_BOX(tabRow), createTabStrip(state));
+    gtk_box_append(GTK_BOX(chrome), tabRow);
     return chrome;
 }
 

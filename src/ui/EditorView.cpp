@@ -202,6 +202,12 @@ void setEditorText(AppState* state, const std::string_view text) {
     GtkTextIter start;
     gtk_text_buffer_get_start_iter(buffer, &start);
     gtk_text_buffer_place_cursor(buffer, &start);
+    // The view may still hold the previous buffer's scroll offset. Resetting
+    // the adjustments directly avoids scroll_to_mark() before allocation,
+    // which makes GTK warn about snapshotting unallocated widgets.
+    GtkScrolledWindow* scroll = GTK_SCROLLED_WINDOW(state->editorScroll);
+    gtk_adjustment_set_value(gtk_scrolled_window_get_vadjustment(scroll), 0.0);
+    gtk_adjustment_set_value(gtk_scrolled_window_get_hadjustment(scroll), 0.0);
     state->syncingEditor = false;
 
     updateStatus(state);

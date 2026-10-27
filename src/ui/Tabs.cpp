@@ -15,6 +15,8 @@ namespace plumas::ui {
 namespace {
 
 constexpr int kTabLabelMaxChars = 24;
+// Marks the first visible line of a tab that is not shown, to restore its view.
+constexpr const char kViewTopMark[] = "plumas-view-top";
 
 EditorTab* tabOf(GtkWidget* widget) {
     return static_cast<EditorTab*>(g_object_get_data(G_OBJECT(widget), "plumas-tab"));
@@ -26,6 +28,34 @@ std::string tabName(const EditorTab& tab) {
         return kUntitledName;
     }
     return core::pathToUtf8(core::pathFromUtf8(path).filename());
+}
+
+void rememberViewTop(AppState* state) {
+    GtkTextView* view = GTK_TEXT_VIEW(state->textView);
+    GdkRectangle visible;
+    gtk_text_view_get_visible_rect(view, &visible);
+    GtkTextIter top;
+    gtk_text_view_get_iter_at_location(view, &top, visible.x, visible.y);
+
+    GtkTextBuffer* buffer = state->activeTab->buffer;
+    if (GtkTextMark* mark = gtk_text_buffer_get_mark(buffer, kViewTopMark)) {
+        gtk_text_buffer_move_mark(buffer, mark, &top);
+    } else {
+        gtk_text_buffer_create_mark(buffer, kViewTopMark, &top, TRUE);
+    }
+}
+
+// After gtk_text_view_set_buffer() the view measures lines in background idles
+// and positions are estimates until it finishes; a low-priority idle runs
+// only once those are done, so the scroll lands where the user left it.
+gboolean restoreViewTop(gpointer userData) {
+    AppState* state = static_cast<AppState*>(userData);
+    if (state->activeTab != nullptr) {
+        if (GtkTextMark* mark = gtk_text_buffer_get_mark(state->activeTab->buffer, kViewTopMark)) {
+            gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(state->textView), mark, 0.0, TRUE, 0.0, 0.0);
+        }
+    }
+    return G_SOURCE_REMOVE;
 }
 
 // Drops a tab without asking. The caller decides what happens to the window.
@@ -147,6 +177,8 @@ void createTabWidget(AppState* state, EditorTab* tab) {
 GtkWidget* createTabStrip(AppState* state) {
     GtkWidget* strip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     gtk_widget_add_css_class(strip, "tab-strip");
+    // Set explicitly so the labels' hexpand does not stretch tabs across the row.
+    gtk_widget_set_hexpand(strip, FALSE);
 
     state->tabBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
 
@@ -202,6 +234,7 @@ void activateTab(AppState* state, EditorTab* tab) {
     }
 
     if (state->activeTab != nullptr) {
+        rememberViewTop(state);
         // A running Replace All would otherwise land in the newly shown buffer.
         abandonReplaceAll(state);
         gtk_widget_remove_css_class(state->activeTab->tabWidget, "active");
@@ -209,14 +242,15 @@ void activateTab(AppState* state, EditorTab* tab) {
 
     state->activeTab = tab;
     gtk_widget_add_css_class(tab->tabWidget, "active");
+    // Each tab's view is restored from its own mark below. Starting from the top
+    // also keeps GTK 4.14 from drawing the old, now out-of-range scrollbar
+    // ("Trying to snapshot GtkGizmo without a current allocation").
+    gtk_adjustment_set_value(
+        gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll)), 0.0);
     gtk_text_view_set_buffer(GTK_TEXT_VIEW(state->textView), tab->buffer);
-    gtk_text_view_scroll_to_mark(
-        GTK_TEXT_VIEW(state->textView),
-        gtk_text_buffer_get_insert(tab->buffer),
-        0.0,
-        FALSE,
-        0.0,
-        0.0);
+    if (gtk_text_buffer_get_mark(tab->buffer, kViewTopMark) != nullptr) {
+        g_idle_add_full(G_PRIORITY_LOW, restoreViewTop, state, nullptr);
+    }
     updateStatus(state);
     gtk_widget_queue_draw(state->lineGutter);
 }
