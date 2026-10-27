@@ -14,6 +14,13 @@ add_library(plumas_platform ${PLUMAS_PLATFORM_SOURCES})
 target_include_directories(plumas_platform PUBLIC include)
 target_compile_options(plumas_platform PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_link_libraries(plumas_platform PUBLIC shell32)
+# windows.h would otherwise define min()/max() macros that break std::min/max.
+target_compile_definitions(plumas_platform PRIVATE NOMINMAX)
+if(MINGW)
+    # MinGW keeps __stack_chk_fail and the _FORTIFY_SOURCE helpers in libssp,
+    # which GCC links only when the stack protector flag reaches the linker.
+    target_link_options(plumas_platform PUBLIC -fstack-protector-strong)
+endif()
 plumas_configure_platform_target(plumas_platform)
 
 target_link_libraries(plumas_core PUBLIC plumas_platform)

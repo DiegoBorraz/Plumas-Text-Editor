@@ -1,6 +1,6 @@
 #include "plumas/platform/Paths.hpp"
 
-#ifndef WIN32
+#ifndef _WIN32
 #error "PathsWin32.cpp must only be built on Windows."
 #endif
 

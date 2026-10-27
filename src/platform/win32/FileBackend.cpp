@@ -1,6 +1,6 @@
 #include "plumas/platform/FileBackend.hpp"
 
-#ifndef WIN32
+#ifndef _WIN32
 #error "FileBackendWin32.cpp must only be built on Windows."
 #endif
 
