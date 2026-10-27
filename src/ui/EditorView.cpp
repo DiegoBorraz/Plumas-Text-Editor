@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 
 namespace plumas::ui {
 
@@ -149,7 +150,7 @@ void onTextChanged(GtkTextBuffer* /*buffer*/, gpointer userData) {
         return;
     }
 
-    state->document->markDirty();
+    state->activeTab->document->markDirty();
     updateStatus(state);
     queueLineGutterRedraw(state);
 }
@@ -189,13 +190,13 @@ gboolean onEditorWheel(
 
 } // namespace
 
-void setEditorText(AppState* state, const char* text) {
+void setEditorText(AppState* state, const std::string_view text) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
 
     // Irreversible so the undo history (and the memory it holds) starts empty.
     state->syncingEditor = true;
     gtk_text_buffer_begin_irreversible_action(buffer);
-    gtk_text_buffer_set_text(buffer, text, -1);
+    gtk_text_buffer_set_text(buffer, text.data(), static_cast<int>(text.size()));
     gtk_text_buffer_end_irreversible_action(buffer);
     // Like Notepad, a freshly loaded text starts with the cursor at the top.
     GtkTextIter start;
@@ -235,6 +236,14 @@ GCharPtr copyEditorText(AppState* state) {
     GtkTextIter end;
     gtk_text_buffer_get_bounds(buffer, &start, &end);
     return GCharPtr(gtk_text_buffer_get_text(buffer, &start, &end, FALSE), g_free);
+}
+
+void attachEditorBuffer(AppState* state, GtkTextBuffer* buffer) {
+    // Unlimited undo would keep every edit of a long session in memory.
+    gtk_text_buffer_set_max_undo_levels(buffer, kMaxUndoLevels);
+    g_signal_connect(buffer, "insert-text", G_CALLBACK(onInsertText), state);
+    g_signal_connect(buffer, "changed", G_CALLBACK(onTextChanged), state);
+    g_signal_connect(buffer, "mark-set", G_CALLBACK(onMarkSet), state);
 }
 
 GtkWidget* createEditorView(AppState* state) {
@@ -277,16 +286,12 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_box_append(GTK_BOX(editorRow), state->lineGutter);
     gtk_box_append(GTK_BOX(editorRow), state->editorScroll);
 
-    GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    // Unlimited undo would keep every edit of a long session in memory.
-    gtk_text_buffer_set_max_undo_levels(buffer, kMaxUndoLevels);
-    g_signal_connect(buffer, "insert-text", G_CALLBACK(onInsertText), state);
-    g_signal_connect(buffer, "changed", G_CALLBACK(onTextChanged), state);
-    g_signal_connect(buffer, "mark-set", G_CALLBACK(onMarkSet), state);
-
     GtkAdjustment* editorVadjustment =
         gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll));
     g_signal_connect(editorVadjustment, "value-changed", G_CALLBACK(onEditorScroll), state);
+    // Fires once a newly shown tab's buffer has been laid out, so the gutter
+    // is not left blank after a tab switch.
+    g_signal_connect(editorVadjustment, "changed", G_CALLBACK(onEditorScroll), state);
 
     return editorRow;
 }

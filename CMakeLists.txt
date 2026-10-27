@@ -105,6 +105,7 @@ add_library(plumas_ui
     src/ui/TitleBar.cpp
     src/ui/Dialogs.cpp
     src/ui/SearchReplace.cpp
+    src/ui/Tabs.cpp
     src/ui/UiHelpers.cpp
     src/ui/Resources.cpp
 )

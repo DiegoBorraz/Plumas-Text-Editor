@@ -267,8 +267,8 @@ gboolean applyReplaceAllOnMainThread(gpointer userData) {
     } else if (result.limitReached) {
         showToast(state, "Replace All stopped at the safety limit.");
     } else if (result.replacements > 0) {
-        setEditorText(state, result.text.c_str());
-        state->document->markDirty();
+        setEditorText(state, result.text);
+        state->activeTab->document->markDirty();
         updateStatus(state);
         showToast(state, "All matches replaced.");
     } else {
@@ -280,6 +280,12 @@ gboolean applyReplaceAllOnMainThread(gpointer userData) {
 }
 
 } // namespace
+
+void prepareSearchBuffer(GtkTextBuffer* buffer) {
+    GtkTextIter start;
+    gtk_text_buffer_get_start_iter(buffer, &start);
+    gtk_text_buffer_create_mark(buffer, kSearchPositionMark, &start, TRUE);
+}
 
 void abandonReplaceAll(AppState* state) {
     if (state->replaceAllJob == nullptr) {
@@ -451,11 +457,6 @@ GtkWidget* createSearchReplaceBar(AppState* state) {
 
     gtk_box_append(GTK_BOX(bar), findRow);
     gtk_box_append(GTK_BOX(bar), replaceRow);
-
-    GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    GtkTextIter start;
-    gtk_text_buffer_get_start_iter(buffer, &start);
-    gtk_text_buffer_create_mark(buffer, kSearchPositionMark, &start, TRUE);
 
     g_signal_connect(state->findEntry, "activate", G_CALLBACK(onFindEntryActivated), state);
     g_signal_connect(state->replaceEntry, "activate", G_CALLBACK(onReplaceEntryActivated), state);

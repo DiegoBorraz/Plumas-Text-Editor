@@ -1,6 +1,7 @@
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/MenuBar.hpp"
 #include "plumas/ui/Resources.hpp"
+#include "plumas/ui/Tabs.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/FileIO.hpp"
@@ -120,31 +121,42 @@ GtkWidget* createWindowControls(AppState* state) {
     return controls;
 }
 
-GtkWidget* createTitleRow(AppState* state) {
-    GtkWidget* titleRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_add_css_class(titleRow, "titlebar");
-
-    // Icon and title form the drag area; the window buttons stay clickable.
-    GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_widget_set_hexpand(titleGroup, TRUE);
+GtkWidget* createLogo() {
     if (hasBundledResource(kIconFileName)) {
-        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromResource());
-    } else if (const std::optional<std::string> iconPath =
-                   findSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
-        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
+        return createTitleLogoFromResource();
+    }
+    if (const std::optional<std::string> iconPath =
+            findSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
+        return createTitleLogoFromFile(*iconPath);
+    }
+    return nullptr;
+}
+
+// Win11 Notepad layout: icon, tabs and "+", empty drag space, window buttons.
+GtkWidget* createTabRow(AppState* state) {
+    const bool customChrome = !platform::usesNativeWindowChrome();
+
+    GtkWidget* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(row, "titlebar");
+
+    if (customChrome) {
+        if (GtkWidget* logo = createLogo()) {
+            gtk_widget_add_css_class(logo, "title-logo");
+            gtk_box_append(GTK_BOX(row), logo);
+        }
     }
 
-    state->titleLabel = gtk_label_new(kUntitledName);
-    gtk_widget_add_css_class(state->titleLabel, "document-title");
-    gtk_label_set_xalign(GTK_LABEL(state->titleLabel), 0.0f);
-    gtk_label_set_ellipsize(GTK_LABEL(state->titleLabel), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_widget_set_hexpand(state->titleLabel, TRUE);
-    gtk_box_append(GTK_BOX(titleGroup), state->titleLabel);
+    gtk_box_append(GTK_BOX(row), createTabStrip(state));
 
-    gtk_box_append(GTK_BOX(titleRow), titleGroup);
-    gtk_box_append(GTK_BOX(titleRow), createWindowControls(state));
-    attachTitleBarDrag(titleGroup, state);
-    return titleRow;
+    GtkWidget* dragArea = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_hexpand(dragArea, TRUE);
+    gtk_box_append(GTK_BOX(row), dragArea);
+
+    if (customChrome) {
+        attachTitleBarDrag(dragArea, state);
+        gtk_box_append(GTK_BOX(row), createWindowControls(state));
+    }
+    return row;
 }
 
 } // namespace
@@ -153,10 +165,7 @@ GtkWidget* createTitleBar(AppState* state) {
     GtkWidget* chrome = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_add_css_class(chrome, "window-chrome");
 
-    // With native chrome the system already shows the title and buttons.
-    if (!platform::usesNativeWindowChrome()) {
-        gtk_box_append(GTK_BOX(chrome), createTitleRow(state));
-    }
+    gtk_box_append(GTK_BOX(chrome), createTabRow(state));
     gtk_box_append(GTK_BOX(chrome), createMenuBar());
     return chrome;
 }

@@ -7,11 +7,14 @@ Editor de texto leve multiplataforma (Linux e Windows; macOS em preparação), e
 ## Funcionalidades
 
 - Abertura e salvamento de arquivos de texto com whitelist de extensões
-- Novo documento, salvar, salvar como e confirmação de alterações não salvas
-- Números de linha desenhados com Cairo/Pango (sem inflar a altura da janela)
+- Abas no estilo do Notepad do Windows 11: um único editor e um buffer por aba
+- Novo documento, salvar, salvar como e confirmação de alterações não salvas (por aba)
+- Barra de menu (File/Edit/View) e barra de status (Ln/Col, caracteres, zoom, CRLF/LF, UTF-8)
+- Zoom de 10% a 500%, quebra de linha automática opcional
+- Números de linha desenhados com Cairo/Pango, fora do texto (não são copiados)
 - Busca e substituição com **Ctrl+F** (Find, Replace, Replace All, Previous/Next)
 - Abertura de arquivos pela linha de comando ou “Abrir com” (`G_APPLICATION_HANDLES_OPEN`)
-- Tema claro/escuro via libadwaita
+- Visual claro no estilo do Notepad do Windows 11
 - Lista de arquivos recentes em `~/.config/plumas-text-editor/config.json`
 - Limite de documento de 50 MB
 - Recursos embutidos via GResource (CSS e ícone na barra de título)
@@ -89,11 +92,13 @@ plumas-editor-texto/
 │   │   └── Config.cpp           # Persistência JSON (arquivos recentes)
 │   └── ui/                      # Camada de apresentação GTK
 │       ├── Application.cpp      # AdwApplication, startup, open-with
-│       ├── MainWindow.cpp       # Layout, toolbar, resize, atalhos
+│       ├── MainWindow.cpp       # Layout, barra de status, resize
+│       ├── MenuBar.cpp          # Menu File/Edit/View, ações win.* e atalhos
+│       ├── Tabs.cpp             # Abas: criar, trocar, fechar, sair
 │       ├── EditorView.cpp       # GtkTextView, gutter, limites de tamanho
 │       ├── SearchReplace.cpp    # Busca/substituição (thread em Replace All)
 │       ├── Dialogs.cpp          # Diálogos abrir/salvar/confirmações
-│       ├── TitleBar.cpp         # Barra de título customizada
+│       ├── TitleBar.cpp         # Linha de abas e botões da janela
 │       ├── Resources.cpp        # GResource e fallback em XDG_DATA_DIRS
 │       ├── UiHelpers.cpp        # Toast, status, Pango nos labels
 │       └── styles.css           # Estilos da interface
@@ -177,8 +182,13 @@ Abrir um arquivo pela CLI:
 
 Atalhos úteis na interface:
 
-- **Ctrl+F** — busca e substituição
-- **Esc** — fecha a barra de busca
+- **Ctrl+T** / **Ctrl+N** — nova aba
+- **Ctrl+W** — fecha a aba (botão do meio na aba também fecha)
+- **Ctrl+Tab** / **Ctrl+Shift+Tab** (ou Ctrl+PageDown/PageUp) — troca de aba
+- **Ctrl+O** / **Ctrl+S** / **Ctrl+Shift+S** — abrir, salvar, salvar como
+- **Ctrl+F** — busca e substituição; **Esc** fecha a barra de busca
+- **Ctrl +** / **Ctrl -** / **Ctrl 0** ou **Ctrl+roda** — zoom
+- **Ctrl+Q** — sair (pergunta sobre cada aba não salva)
 
 Build com sanitizers (depuração):
 

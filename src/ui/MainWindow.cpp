@@ -4,6 +4,7 @@
 #include "plumas/ui/EditorView.hpp"
 #include "plumas/ui/MenuBar.hpp"
 #include "plumas/ui/SearchReplace.hpp"
+#include "plumas/ui/Tabs.hpp"
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
@@ -59,11 +60,11 @@ GtkWidget* createStatusBar(AppState* state) {
 gboolean onCloseRequest(GtkWindow* /*window*/, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
 
-    if (!state->document->isDirty()) {
+    if (!hasUnsavedTabs(state)) {
         return FALSE;
     }
 
-    showUnsavedDialog(state, closeWindow);
+    requestQuit(state);
     return TRUE;
 }
 
@@ -196,10 +197,8 @@ void buildMainWindow(AppState* state) {
     g_signal_connect(state->window, "close-request", G_CALLBACK(onCloseRequest), state);
     g_signal_connect(state->window, "destroy", G_CALLBACK(onWindowDestroy), state);
 
-    state->document = std::make_unique<core::Document>();
-    state->usesCrlf = platform::usesCrlfByDefault();
     setEditorZoom(state, kDefaultZoomPercent);
-    setEditorText(state, "");
+    newTab(state);
 }
 
 void presentMainWindow(AppState* state) {

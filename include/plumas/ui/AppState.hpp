@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace plumas::ui {
 
@@ -60,6 +61,26 @@ struct ReplaceAllJob {
     }
 };
 
+// One open document. Every tab owns a text buffer; the single text view shows
+// the active tab's buffer, so extra tabs cost only their text and undo history.
+struct EditorTab {
+    std::unique_ptr<core::Document> document;
+    GtkTextBuffer* buffer = nullptr;
+    // Informational only: shows the convention of the file that was opened.
+    bool usesCrlf = false;
+    GtkWidget* tabWidget = nullptr;
+    GtkWidget* tabLabel = nullptr;
+
+    EditorTab() = default;
+    EditorTab(const EditorTab&) = delete;
+    EditorTab& operator=(const EditorTab&) = delete;
+    ~EditorTab() {
+        if (buffer != nullptr) {
+            g_object_unref(buffer);
+        }
+    }
+};
+
 struct AppState {
     AdwApplication* app = nullptr;
     GtkWindow* window = nullptr;
@@ -67,8 +88,7 @@ struct AppState {
     GtkWidget* textView = nullptr;
     GtkWidget* lineGutter = nullptr;
     GtkWidget* editorScroll = nullptr;
-    // Null when the platform draws the window title (native chrome).
-    GtkWidget* titleLabel = nullptr;
+    GtkWidget* tabBox = nullptr;
     GtkWidget* maximizeButton = nullptr;
     GtkWidget* statusBar = nullptr;
     GtkWidget* positionLabel = nullptr;
@@ -76,16 +96,15 @@ struct AppState {
     GtkWidget* lineEndingLabel = nullptr;
     GtkCssProvider* zoomProvider = nullptr;
     int zoomPercent = kDefaultZoomPercent;
-    // Informational only: shows the convention of the file that was opened.
-    bool usesCrlf = false;
     GtkWidget* searchBar = nullptr;
     GtkWidget* findEntry = nullptr;
     GtkWidget* replaceEntry = nullptr;
 
-    std::string pendingOpenPath;
     // Runs once the save started from the unsaved-changes dialog succeeds.
     AppAction afterSaveAction = nullptr;
-    std::unique_ptr<core::Document> document;
+    std::vector<std::unique_ptr<EditorTab>> tabs;
+    // Never null while the window exists.
+    EditorTab* activeTab = nullptr;
     core::Config config;
     bool syncingEditor = false;
     std::unique_ptr<ReplaceAllJob> replaceAllJob;

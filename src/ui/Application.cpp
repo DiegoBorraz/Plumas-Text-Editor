@@ -51,16 +51,6 @@ void ensureMainWindow(AppState* state, AdwApplication* app) {
     buildMainWindow(state);
 }
 
-void openFileArgument(AppState* state, const std::string& path) {
-    if (state->document != nullptr && state->document->isDirty()) {
-        state->pendingOpenPath = path;
-        runWithUnsavedCheck(state, openPendingPath);
-        return;
-    }
-
-    tryOpenPath(state, path);
-}
-
 void onActivate(AdwApplication* app, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
 
@@ -86,7 +76,7 @@ void onOpen(
     if (fileCount > 0) {
         char* path = g_file_get_path(files[0]);
         if (path != nullptr) {
-            openFileArgument(state, path);
+            tryOpenPath(state, path);
             g_free(path);
         }
     }

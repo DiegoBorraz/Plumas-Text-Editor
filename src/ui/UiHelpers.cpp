@@ -1,6 +1,7 @@
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/Document.hpp"
+#include "plumas/ui/Tabs.hpp"
 #include "plumas/core/FileIO.hpp"
 
 #include <adwaita.h>
@@ -58,23 +59,19 @@ void showToast(AppState* state, const char* message) {
 }
 
 void updateStatus(AppState* state) {
-    const core::Document& document = *state->document;
+    EditorTab* tab = state->activeTab;
+    if (tab == nullptr) {
+        return;
+    }
+
+    const core::Document& document = *tab->document;
     const std::string name = document.filePath().empty()
         ? std::string(kUntitledName)
         : core::pathToUtf8(core::pathFromUtf8(document.filePath()).filename());
-
     const std::string windowTitle =
         (document.isDirty() ? "*" : "") + name + " - " + kAppShortName;
     gtk_window_set_title(state->window, windowTitle.c_str());
-
-    if (state->titleLabel != nullptr) {
-        // Win11 Notepad marks unsaved changes with a dot next to the name.
-        const std::string title = document.isDirty() ? name + "  \xE2\x80\xA2" : name;
-        gtk_label_set_text(GTK_LABEL(state->titleLabel), title.c_str());
-        gtk_widget_set_tooltip_text(
-            state->titleLabel,
-            document.filePath().empty() ? nullptr : document.filePath().c_str());
-    }
+    updateTabLabel(tab);
 
     if (state->positionLabel == nullptr) {
         return;
@@ -94,7 +91,7 @@ void updateStatus(AppState* state) {
     gtk_label_set_text(GTK_LABEL(state->zoomLabel), zoom.c_str());
     gtk_label_set_text(
         GTK_LABEL(state->lineEndingLabel),
-        state->usesCrlf ? "Windows (CRLF)" : "Unix (LF)");
+        tab->usesCrlf ? "Windows (CRLF)" : "Unix (LF)");
 }
 
 void setLabelStyle(GtkLabel* label, const int fontSizePt, const bool bold) {

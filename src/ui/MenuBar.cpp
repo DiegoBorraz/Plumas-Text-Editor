@@ -3,6 +3,7 @@
 #include "plumas/ui/Dialogs.hpp"
 #include "plumas/ui/EditorView.hpp"
 #include "plumas/ui/SearchReplace.hpp"
+#include "plumas/ui/Tabs.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
 namespace plumas::ui {
@@ -16,16 +17,16 @@ AppState* toState(gpointer userData) {
 }
 
 void onNew(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
-    runWithUnsavedCheck(toState(userData), newDocument);
+    newTab(toState(userData));
 }
 
 void onOpen(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
-    runWithUnsavedCheck(toState(userData), showOpenDialog);
+    showOpenDialog(toState(userData));
 }
 
 void onSave(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
     AppState* state = toState(userData);
-    if (isSaveAvailable(*state->document)) {
+    if (isSaveAvailable(*state->activeTab->document)) {
         saveDocument(state, false);
     }
 }
@@ -35,7 +36,20 @@ void onSaveAs(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userD
 }
 
 void onQuit(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
-    runWithUnsavedCheck(toState(userData), closeWindow);
+    requestQuit(toState(userData));
+}
+
+void onCloseTab(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
+    AppState* state = toState(userData);
+    closeTab(state, state->activeTab);
+}
+
+void onNextTab(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
+    cycleTab(toState(userData), 1);
+}
+
+void onPreviousTab(GSimpleAction* /*action*/, GVariant* /*parameter*/, gpointer userData) {
+    cycleTab(toState(userData), -1);
 }
 
 // The text view already binds these keys; the menu only forwards to it.
@@ -106,7 +120,10 @@ struct Accel {
 // Undo, clipboard and select-all are left to the focused widget so they keep
 // working inside the find and replace entries.
 constexpr Accel kAccels[] = {
-    {"win.new", {"<Control>n", nullptr}},
+    {"win.new", {"<Control>t", "<Control>n", nullptr}},
+    {"win.close-tab", {"<Control>w", "<Control>F4", nullptr}},
+    {"win.next-tab", {"<Control>Tab", "<Control>Page_Down", nullptr}},
+    {"win.previous-tab", {"<Control><Shift>ISO_Left_Tab", "<Control>Page_Up", nullptr}},
     {"win.open", {"<Control>o", nullptr}},
     {"win.save", {"<Control>s", nullptr}},
     {"win.save-as", {"<Control><Shift>s", nullptr}},
@@ -140,15 +157,16 @@ void appendSubmenu(GMenu* bar, const char* label, GMenu* submenu) {
 GMenu* createFileMenu() {
     GMenu* menu = g_menu_new();
     GMenu* documents = g_menu_new();
-    appendItem(documents, "New", "win.new");
+    appendItem(documents, "New Tab", "win.new");
     appendItem(documents, "Open…", "win.open");
     appendItem(documents, "Save", "win.save");
     appendItem(documents, "Save As…", "win.save-as");
     appendSection(menu, documents);
 
-    GMenu* quit = g_menu_new();
-    appendItem(quit, "Quit", "win.quit");
-    appendSection(menu, quit);
+    GMenu* closing = g_menu_new();
+    appendItem(closing, "Close Tab", "win.close-tab");
+    appendItem(closing, "Quit", "win.quit");
+    appendSection(menu, closing);
     return menu;
 }
 
@@ -196,6 +214,9 @@ void installWindowActions(AppState* state) {
         {"save", onSave, nullptr, nullptr, nullptr, {}},
         {"save-as", onSaveAs, nullptr, nullptr, nullptr, {}},
         {"quit", onQuit, nullptr, nullptr, nullptr, {}},
+        {"close-tab", onCloseTab, nullptr, nullptr, nullptr, {}},
+        {"next-tab", onNextTab, nullptr, nullptr, nullptr, {}},
+        {"previous-tab", onPreviousTab, nullptr, nullptr, nullptr, {}},
         {"undo", onUndo, nullptr, nullptr, nullptr, {}},
         {"cut", onCut, nullptr, nullptr, nullptr, {}},
         {"copy", onCopy, nullptr, nullptr, nullptr, {}},

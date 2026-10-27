@@ -26,15 +26,57 @@ box.resize-handle {
   background-color: transparent;
 }
 
-/* Title row (Linux custom chrome only). */
+/* Title row: icon, tabs, drag space, window buttons. */
 
 .titlebar {
-  min-height: 32px;
-  padding-left: 14px;
+  min-height: 40px;
+  padding-left: 8px;
 }
 
-.document-title {
+.title-logo {
+  margin: 0 10px 0 6px;
+}
+
+.tab-strip {
+  margin-top: 6px;
+}
+
+.editor-tab {
+  min-height: 34px;
+  min-width: 140px;
+  padding: 0 6px 0 12px;
+  border-radius: 8px 8px 0 0;
   font-size: 9pt;
+}
+
+.editor-tab:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* The active tab shares the menu row's colour so the two read as one card. */
+.editor-tab.active {
+  background-color: #fbfbfb;
+}
+
+.editor-tab .tab-close {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  -gtk-icon-size: 10px;
+}
+
+.new-tab {
+  min-width: 32px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0 0 3px 4px;
+  border-radius: 6px;
+  -gtk-icon-size: 12px;
+}
+
+.window-controls {
+  margin-bottom: 8px;
 }
 
 .window-controls button {
@@ -59,7 +101,7 @@ box.resize-handle {
 
 menubar.plumas-menubar {
   padding: 2px 6px 4px 6px;
-  background: none;
+  background-color: #fbfbfb;
   box-shadow: none;
 }
 

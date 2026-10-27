@@ -2,10 +2,10 @@
 
 #include "plumas/ui/EditorView.hpp"
 #include "plumas/ui/SearchReplace.hpp"
+#include "plumas/ui/Tabs.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/FileIO.hpp"
-#include "plumas/platform/Paths.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -76,12 +76,12 @@ bool performSave(AppState* state, const std::string& path) {
         return false;
     }
 
-    if (!state->document->saveAs(path, content)) {
+    if (!state->activeTab->document->saveAs(path, content)) {
         showToast(state, "Failed to save file.");
         return false;
     }
 
-    persistRecent(state, state->document->filePath());
+    persistRecent(state, state->activeTab->document->filePath());
     updateStatus(state);
     showToast(state, "File saved.");
     return true;
@@ -146,14 +146,14 @@ void onUnsavedDialogFinished(GObject* source, GAsyncResult* result, gpointer use
         return;
     }
 
-    if (state->document->filePath().empty()) {
+    if (state->activeTab->document->filePath().empty()) {
         // The save dialog is asynchronous; run the action once it saves.
         state->afterSaveAction = pending->action;
         showSaveDialog(state);
         return;
     }
 
-    if (performSave(state, state->document->filePath())) {
+    if (performSave(state, state->activeTab->document->filePath())) {
         pending->action(state);
     }
 }
@@ -161,17 +161,23 @@ void onUnsavedDialogFinished(GObject* source, GAsyncResult* result, gpointer use
 } // namespace
 
 void saveDocument(AppState* state, const bool saveAs) {
-    if (saveAs || state->document->filePath().empty()) {
+    if (saveAs || state->activeTab->document->filePath().empty()) {
         showSaveDialog(state);
         return;
     }
 
-    performSave(state, state->document->filePath());
+    performSave(state, state->activeTab->document->filePath());
 }
 
 void tryOpenPath(AppState* state, const std::string& path) {
     const std::optional<std::string> valid = validateTextFilePath(state, path);
     if (!valid.has_value()) {
+        return;
+    }
+
+    // Opening a file that is already open just shows its tab.
+    if (EditorTab* existing = findTabByPath(state, *valid)) {
+        activateTab(state, existing);
         return;
     }
 
@@ -182,12 +188,18 @@ void tryOpenPath(AppState* state, const std::string& path) {
         return;
     }
 
-    abandonReplaceAll(state);
-    state->document = std::move(document);
-    state->usesCrlf = core::usesCrlfLineEndings(*content);
-    setEditorText(state, content->c_str());
-    persistRecent(state, state->document->filePath());
-    showToast(state, "File opened.");
+    const bool usesCrlf = core::usesCrlfLineEndings(*content);
+    if (isReusableTab(*state->activeTab)) {
+        // Like Notepad, a blank untitled tab is replaced instead of kept.
+        abandonReplaceAll(state);
+        state->activeTab->document = std::move(document);
+        state->activeTab->usesCrlf = usesCrlf;
+        setEditorText(state, *content);
+        updateTabLabel(state->activeTab);
+    } else {
+        addTab(state, std::move(document), *content, usesCrlf);
+    }
+    persistRecent(state, state->activeTab->document->filePath());
 }
 
 void showOpenDialog(AppState* state) {
@@ -199,8 +211,8 @@ void showOpenDialog(AppState* state) {
 void showSaveDialog(AppState* state) {
     GtkFileDialog* dialog = createTextFileDialog("Save file");
 
-    if (!state->document->filePath().empty()) {
-        GFile* initialFile = g_file_new_for_path(state->document->filePath().c_str());
+    if (!state->activeTab->document->filePath().empty()) {
+        GFile* initialFile = g_file_new_for_path(state->activeTab->document->filePath().c_str());
         gtk_file_dialog_set_initial_file(dialog, initialFile);
         g_object_unref(initialFile);
     }
@@ -234,34 +246,6 @@ void showUnsavedDialog(AppState* state, const AppAction action) {
         nullptr,
         onUnsavedDialogFinished,
         pending);
-}
-
-void runWithUnsavedCheck(AppState* state, const AppAction action) {
-    if (!state->document->isDirty()) {
-        action(state);
-        return;
-    }
-
-    showUnsavedDialog(state, action);
-}
-
-void closeWindow(AppState* state) {
-    gtk_window_destroy(state->window);
-}
-
-void newDocument(AppState* state) {
-    abandonReplaceAll(state);
-    state->document = std::make_unique<core::Document>();
-    state->usesCrlf = platform::usesCrlfByDefault();
-    setEditorText(state, "");
-    showToast(state, "New document created.");
-}
-
-void openPendingPath(AppState* state) {
-    const std::string path = std::exchange(state->pendingOpenPath, {});
-    if (!path.empty()) {
-        tryOpenPath(state, path);
-    }
 }
 
 } // namespace plumas::ui
