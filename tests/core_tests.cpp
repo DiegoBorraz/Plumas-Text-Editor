@@ -143,6 +143,11 @@ void testReadLimits() {
     result = readTextFile(dir.path, 100);
     CHECK(result.error == FileIoError::NotRegularFile);
 
+    // The size check is inclusive and rejects directories.
+    CHECK(isSafeRegularFileSize(file, 5));
+    CHECK(!isSafeRegularFileSize(file, 4));
+    CHECK(!isSafeRegularFileSize(dir.path, 100));
+
     result = readTextFile(dir.path / "missing.txt", 100);
     CHECK(result.error == FileIoError::NotFound);
 
@@ -201,6 +206,10 @@ void testDocumentRoundTrip() {
     Document reopened;
     const std::optional<std::string> content = reopened.load(path);
     CHECK(content.has_value() && *content == "linha 1\nlinha 2\n");
+
+    // Saving over an existing file replaces it and leaves no temp file.
+    CHECK(document.saveAs(path, "nova versão\n"));
+    CHECK(readAll(normalizePath(path).value()) == "nova versão\n");
 
     CHECK(!document.saveAs(pathToUtf8(dir.path / "evil.exe"), "x"));
     CHECK(!fs::exists(dir.path / "evil.exe"));
