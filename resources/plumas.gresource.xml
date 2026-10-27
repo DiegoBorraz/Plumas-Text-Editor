@@ -2,6 +2,7 @@
 <gresources>
   <gresource prefix="/com/plumatext/PlumaText">
     <file alias="styles.css">../src/ui/styles.css</file>
+    <file alias="styles-dark.css">../src/ui/styles-dark.css</file>
     <file>plumas-icon.webp</file>
   </gresource>
 </gresources>

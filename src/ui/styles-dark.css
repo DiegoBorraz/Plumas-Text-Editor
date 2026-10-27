@@ -1,0 +1,23 @@
+/* "Pena" palette, dark. Loaded on top of styles.css while the system prefers
+   a dark theme; it only redefines the colour names used there. */
+
+@define-color pluma_bar #1E1D22;
+@define-color pluma_surface #26252B;
+@define-color pluma_text #E9E7EE;
+@define-color pluma_status_text #B4B0BC;
+@define-color pluma_line_number #8E8A98;
+@define-color pluma_border #34323A;
+@define-color pluma_gutter_border #302E36;
+@define-color pluma_selection #6B2450;
+@define-color pluma_selection_text #FFFFFF;
+@define-color pluma_accent #F06AB0;
+@define-color pluma_hover #2C2A31;
+@define-color pluma_tab #19181D;
+@define-color pluma_tab_text #A9A5B2;
+@define-color pluma_tab_hover #2A2930;
+@define-color pluma_tab_close_hover #36343C;
+
+/* Filled accent buttons keep the darker magenta so white text stays legible. */
+@define-color accent_color @pluma_accent;
+@define-color accent_bg_color #B4237A;
+@define-color accent_fg_color #FFFFFF;

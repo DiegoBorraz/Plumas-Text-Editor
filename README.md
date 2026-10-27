@@ -14,7 +14,8 @@ Editor de texto leve multiplataforma (Linux e Windows; macOS em preparação), e
 - Números de linha desenhados com Cairo/Pango, fora do texto (não são copiados)
 - Busca e substituição com **Ctrl+F** (Find, Replace, Replace All, Previous/Next)
 - Abertura de arquivos pela linha de comando ou “Abrir com” (`G_APPLICATION_HANDLES_OPEN`)
-- Visual claro no estilo do Notepad do Windows 11
+- Visual no estilo do Notepad do Windows 11 com a paleta "Pena" (magenta do ícone), clara e escura conforme o sistema
+- Destaque da linha do cursor e do número da linha atual
 - Lista de arquivos recentes em `~/.config/pluma-text/config.json` (lida de `~/.config/plumas-text-editor/` se vier de uma versão antiga)
 - Limite de documento de 50 MB
 - Recursos embutidos via GResource (CSS e ícone na barra de título)
@@ -101,7 +102,8 @@ plumas-editor-texto/
 │       ├── TitleBar.cpp         # Linha de abas e botões da janela
 │       ├── Resources.cpp        # GResource e fallback em XDG_DATA_DIRS
 │       ├── UiHelpers.cpp        # Toast, status, Pango nos labels
-│       └── styles.css           # Estilos da interface
+│       ├── styles.css           # Estilos e paleta clara
+│       └── styles-dark.css      # Paleta escura (só redefine as cores)
 ├── include/plumas/
 │   ├── core/                    # Headers do núcleo
 │   └── ui/                      # Headers da UI e AppState

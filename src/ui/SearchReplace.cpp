@@ -27,6 +27,9 @@ GtkTextTag* ensureSearchHighlightTag(AppState* state) {
     tag = gtk_text_buffer_create_tag(
         buffer,
         kSearchHighlightTag,
+        // Dark text on yellow, so matches stay legible in the dark theme too.
+        "foreground",
+        "#1C1B1F",
         "background",
         "#fff59d",
         nullptr);

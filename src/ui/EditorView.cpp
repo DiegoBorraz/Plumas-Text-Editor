@@ -9,6 +9,63 @@
 #include <string>
 #include <string_view>
 
+// A GtkTextView that paints the cursor's line underneath the text. Painting
+// in snapshot_layer() keeps the highlight out of the buffer; a text tag would
+// travel with copied text.
+struct PlumaTextView {
+    GtkTextView parentInstance;
+    GdkRGBA currentLineColor;
+};
+
+struct PlumaTextViewClass {
+    GtkTextViewClass parentClass;
+};
+
+G_DEFINE_TYPE(PlumaTextView, pluma_text_view, GTK_TYPE_TEXT_VIEW)
+
+namespace {
+
+void plumaTextViewSnapshotLayer(
+    GtkTextView* view,
+    const GtkTextViewLayer layer,
+    GtkSnapshot* snapshot) {
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(view);
+    // With a selection, the selection colour already shows where the cursor is.
+    if (layer == GTK_TEXT_VIEW_LAYER_BELOW_TEXT && !gtk_text_buffer_get_has_selection(buffer)) {
+        GtkTextIter cursor;
+        gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+        int lineY = 0;
+        int lineHeight = 0;
+        gtk_text_view_get_line_yrange(view, &cursor, &lineY, &lineHeight);
+        GdkRectangle visible;
+        gtk_text_view_get_visible_rect(view, &visible);
+
+        // Layers are drawn in buffer coordinates, like the two values above.
+        const graphene_rect_t line = GRAPHENE_RECT_INIT(
+            static_cast<float>(visible.x),
+            static_cast<float>(lineY),
+            static_cast<float>(visible.width),
+            static_cast<float>(lineHeight));
+        gtk_snapshot_append_color(
+            snapshot, &reinterpret_cast<PlumaTextView*>(view)->currentLineColor, &line);
+    }
+
+    const auto snapshotParent = GTK_TEXT_VIEW_CLASS(pluma_text_view_parent_class)->snapshot_layer;
+    if (snapshotParent != nullptr) {
+        snapshotParent(view, layer, snapshot);
+    }
+}
+
+} // namespace
+
+static void pluma_text_view_class_init(PlumaTextViewClass* klass) {
+    GTK_TEXT_VIEW_CLASS(klass)->snapshot_layer = plumaTextViewSnapshotLayer;
+}
+
+static void pluma_text_view_init(PlumaTextView* view) {
+    view->currentLineColor = GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
+}
+
 namespace plumas::ui {
 
 namespace {
@@ -24,6 +81,19 @@ constexpr int kBaseFontSizeTenthsPt = 110;
 constexpr int kMinZoomPercent = 10;
 constexpr int kMaxZoomPercent = 500;
 constexpr int kScrollZoomStepPercent = 10;
+
+// The two colours the editor paints itself; everything else is in styles.css
+// and styles-dark.css ("Pena" palette).
+struct EditorColors {
+    const char* currentLine;
+    const char* currentLineNumber;
+};
+constexpr EditorColors kLightEditorColors = {"#FBF4F8", "#B4237A"};
+constexpr EditorColors kDarkEditorColors = {"#2E2C34", "#F06AB0"};
+
+const EditorColors& editorColors(const AppState* state) {
+    return state->darkTheme ? kDarkEditorColors : kLightEditorColors;
+}
 
 void queueLineGutterRedraw(AppState* state) {
     if (state->lineGutter != nullptr) {
@@ -81,11 +151,21 @@ void drawLineNumbers(
     pango_layout_context_changed(layout);
 
     PangoContext* widgetContext = gtk_widget_get_pango_context(GTK_WIDGET(textView));
-    pango_layout_set_font_description(
-        layout,
-        pango_context_get_font_description(widgetContext));
+    const PangoFontDescription* font = pango_context_get_font_description(widgetContext);
+    pango_layout_set_font_description(layout, font);
 
     fitLineGutterWidth(state, layout);
+
+    // The cursor's line number is drawn bold in the accent colour.
+    PangoFontDescription* currentFont = pango_font_description_copy(font);
+    pango_font_description_set_weight(currentFont, PANGO_WEIGHT_BOLD);
+    GdkRGBA currentNumberColor;
+    gdk_rgba_parse(&currentNumberColor, editorColors(state).currentLineNumber);
+
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(textView);
+    GtkTextIter cursor;
+    gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+    const int cursorLine = gtk_text_iter_get_line(&cursor);
 
     int firstLineY = 0;
     GtkTextIter firstIter;
@@ -96,32 +176,37 @@ void drawLineNumbers(
     double y = static_cast<double>(lineY) - scrollY + kLineGutterPaddingTop;
 
     GtkTextIter currentIter = firstIter;
+    // The line holding the end iterator is drawn too: it is the empty last line
+    // after a final newline, or line 1 of an empty document.
     while (y < height) {
-        if (gtk_text_iter_is_end(&currentIter)) {
-            break;
-        }
-
         int lineHeight = 0;
         gtk_text_view_get_line_yrange(textView, &currentIter, nullptr, &lineHeight);
         if (lineHeight <= 0) {
             break;
         }
 
-        const int lineNumber = gtk_text_iter_get_line(&currentIter) + 1;
-        const std::string lineText = std::to_string(lineNumber);
+        const int line = gtk_text_iter_get_line(&currentIter);
+        const bool isCursorLine = line == cursorLine;
+        const std::string lineText = std::to_string(line + 1);
         pango_layout_set_text(layout, lineText.c_str(), -1);
         pango_layout_set_width(layout, (width - kLineGutterPaddingRight) * PANGO_SCALE);
         pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+        pango_layout_set_font_description(layout, isCursorLine ? currentFont : font);
+        gdk_cairo_set_source_rgba(cr, isCursorLine ? &currentNumberColor : &lineNumberColor);
 
         cairo_move_to(cr, 0, y);
         pango_cairo_show_layout(cr, layout);
 
         y += lineHeight;
-        if (!gtk_text_iter_forward_line(&currentIter)) {
+        // forward_line() returns FALSE when it lands on the end iterator, even
+        // if that starts a new, empty last line; stop only once it stays put.
+        if (!gtk_text_iter_forward_line(&currentIter)
+            && gtk_text_iter_get_line(&currentIter) == line) {
             break;
         }
     }
 
+    pango_font_description_free(currentFont);
     g_object_unref(layout);
 }
 
@@ -165,7 +250,11 @@ void onMarkSet(
     GtkTextMark* mark,
     gpointer userData) {
     if (mark == gtk_text_buffer_get_insert(buffer)) {
-        updateStatus(static_cast<AppState*>(userData));
+        AppState* state = static_cast<AppState*>(userData);
+        updateStatus(state);
+        // The current-line highlight and line number follow the cursor.
+        gtk_widget_queue_draw(state->textView);
+        queueLineGutterRedraw(state);
     }
 }
 
@@ -236,6 +325,14 @@ void setEditorZoom(AppState* state, const int percent) {
     queueLineGutterRedraw(state);
 }
 
+void applyEditorColors(AppState* state) {
+    gdk_rgba_parse(
+        &reinterpret_cast<PlumaTextView*>(state->textView)->currentLineColor,
+        editorColors(state).currentLine);
+    gtk_widget_queue_draw(state->textView);
+    queueLineGutterRedraw(state);
+}
+
 GCharPtr copyEditorText(AppState* state) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
     GtkTextIter start;
@@ -270,7 +367,7 @@ GtkWidget* createEditorView(AppState* state) {
     gtk_widget_set_vexpand(state->editorScroll, TRUE);
     gtk_widget_set_hexpand(state->editorScroll, TRUE);
 
-    state->textView = gtk_text_view_new();
+    state->textView = GTK_WIDGET(g_object_new(pluma_text_view_get_type(), nullptr));
     gtk_widget_add_css_class(state->textView, "editor-text");
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(state->textView), GTK_WRAP_NONE);
     gtk_text_view_set_left_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);

@@ -1,11 +1,34 @@
-/* Windows 11 Notepad look: light chrome, white editor, thin status bar. */
+/* "Pena" palette, light. styles-dark.css redefines these names for the dark
+   theme; the two colours the editor paints itself live in EditorView.cpp. */
+
+@define-color pluma_bar #F4F3F6;
+@define-color pluma_surface #FFFFFF;
+@define-color pluma_text #1C1B1F;
+@define-color pluma_status_text #4A4752;
+@define-color pluma_line_number #757180;
+@define-color pluma_border #E4E2E8;
+@define-color pluma_gutter_border #EDEBF0;
+@define-color pluma_selection #F3D3E5;
+@define-color pluma_selection_text #1C1B1F;
+@define-color pluma_accent #B4237A;
+@define-color pluma_hover #E6E3EB;
+@define-color pluma_tab #ECEAF0;
+@define-color pluma_tab_text #5C5966;
+@define-color pluma_tab_hover #E4E1E9;
+@define-color pluma_tab_close_hover #E0DCE6;
+@define-color pluma_danger #C42B1C;
+
+/* libadwaita widgets (entries' focus ring, dialogs) take the same accent. */
+@define-color accent_color @pluma_accent;
+@define-color accent_bg_color #B4237A;
+@define-color accent_fg_color #FFFFFF;
 
 window.plumas-app {
   min-height: 0;
   min-width: 0;
   border-radius: 8px;
-  background-color: #f3f3f3;
-  color: #1a1a1a;
+  background-color: @pluma_bar;
+  color: @pluma_text;
   font-family: "Segoe UI Variable Text", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
   font-size: 10pt;
 }
@@ -33,52 +56,8 @@ box.resize-handle {
   padding-left: 8px;
 }
 
-/* Tabs row, between the menu and the editor. */
-
-.tab-row {
-  padding: 0 8px;
-}
-
 .title-logo {
   margin: 0 10px 0 6px;
-}
-
-.tab-strip {
-  margin-top: 2px;
-}
-
-.editor-tab {
-  min-height: 34px;
-  min-width: 140px;
-  padding: 0 6px 0 12px;
-  border-radius: 8px 8px 0 0;
-  font-size: 9pt;
-}
-
-.editor-tab:hover {
-  background-color: rgba(0, 0, 0, 0.04);
-}
-
-/* The active tab is white like the editor, so the two read as one page. */
-.editor-tab.active {
-  background-color: #ffffff;
-}
-
-.editor-tab .tab-close {
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: 4px;
-  -gtk-icon-size: 10px;
-}
-
-.new-tab {
-  min-width: 32px;
-  min-height: 28px;
-  padding: 0;
-  margin: 0 0 3px 4px;
-  border-radius: 6px;
-  -gtk-icon-size: 12px;
 }
 
 .window-controls button {
@@ -87,19 +66,18 @@ box.resize-handle {
   padding: 0;
   border-radius: 0;
   background: none;
+  color: @pluma_text;
   -gtk-icon-size: 12px;
 }
 
 .window-controls button:hover {
-  background-color: rgba(0, 0, 0, 0.06);
+  background-color: @pluma_hover;
 }
 
 .window-controls .window-close:hover {
-  background-color: #c42b1c;
-  color: #ffffff;
+  background-color: @pluma_danger;
+  color: #FFFFFF;
 }
-
-/* Menu row. */
 
 menubar.plumas-menubar {
   padding: 0;
@@ -111,35 +89,98 @@ menubar.plumas-menubar > item {
   padding: 4px 10px;
   border-radius: 4px;
   min-height: 0;
+  color: @pluma_text;
 }
 
 menubar.plumas-menubar > item:hover,
 menubar.plumas-menubar > item:selected {
-  background-color: rgba(0, 0, 0, 0.06);
+  background-color: @pluma_hover;
+}
+
+/* Tabs row, between the menu and the editor. */
+
+.tab-row {
+  padding: 0 8px;
+}
+
+.tab-strip {
+  margin-top: 2px;
+}
+
+.editor-tab {
+  min-height: 34px;
+  min-width: 140px;
+  padding: 0 6px 0 12px;
+  margin-right: 2px;
+  border-radius: 8px 8px 0 0;
+  font-size: 9pt;
+  background-color: @pluma_tab;
+  color: @pluma_tab_text;
+}
+
+.editor-tab:hover {
+  background-color: @pluma_tab_hover;
+  color: @pluma_text;
+}
+
+/* The active tab shares the editor's colour, so the two read as one page;
+   the accent line underneath marks it. */
+.editor-tab.active {
+  background-color: @pluma_surface;
+  color: @pluma_text;
+  box-shadow: inset 0 -2px @pluma_accent;
+}
+
+.editor-tab .tab-close {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  color: inherit;
+  -gtk-icon-size: 10px;
+}
+
+.editor-tab .tab-close:hover {
+  background-color: @pluma_tab_close_hover;
+}
+
+.new-tab {
+  min-width: 32px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0 0 3px 4px;
+  border-radius: 6px;
+  color: @pluma_text;
+  -gtk-icon-size: 12px;
+}
+
+.new-tab:hover {
+  background-color: @pluma_hover;
 }
 
 /* Editor. */
 
 box.editor-row {
-  background-color: #ffffff;
+  background-color: @pluma_surface;
 }
 
 textview.editor-text,
 textview.editor-text > text {
-  background-color: #ffffff;
-  color: #1a1a1a;
+  background-color: @pluma_surface;
+  color: @pluma_text;
+  caret-color: @pluma_accent;
   font-family: "Consolas", "Cascadia Mono", "DejaVu Sans Mono", monospace;
 }
 
 textview.editor-text > text selection {
-  background-color: #0078d4;
-  color: #ffffff;
+  background-color: @pluma_selection;
+  color: @pluma_selection_text;
 }
 
 .line-gutter {
-  background-color: #ffffff;
-  color: #8a8a8a;
-  border-right: 1px solid #ededed;
+  background-color: @pluma_surface;
+  color: @pluma_line_number;
+  border-right: 1px solid @pluma_gutter_border;
 }
 
 /* Status bar. */
@@ -147,14 +188,14 @@ textview.editor-text > text selection {
 box.status-bar {
   min-height: 24px;
   padding: 0 8px;
-  border-top: 1px solid #e5e5e5;
+  border-top: 1px solid @pluma_border;
   font-size: 9pt;
-  color: #1a1a1a;
+  color: @pluma_status_text;
 }
 
 box.status-bar separator {
   margin: 5px 0;
-  background-color: #d6d6d6;
+  background-color: @pluma_border;
   min-width: 1px;
 }
 
@@ -162,11 +203,12 @@ label.status-segment {
   padding: 0 14px;
 }
 
-/* Find and replace: a light card, as in Notepad's find box. */
+/* Find and replace: a card, as in Notepad's find box. */
 
 box.search-replace-bar {
-  background-color: #ffffff;
-  border: 1px solid #e5e5e5;
+  background-color: @pluma_surface;
+  color: @pluma_text;
+  border: 1px solid @pluma_border;
   border-radius: 8px;
   padding: 8px 10px;
   margin: 6px 8px;

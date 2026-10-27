@@ -22,6 +22,7 @@ constexpr const char* kUntitledName = "Untitled";
 constexpr int kDefaultZoomPercent = 100;
 constexpr const char* kIconFileName = "plumas-icon.webp";
 constexpr const char* kStylesFileName = "styles.css";
+constexpr const char* kDarkStylesFileName = "styles-dark.css";
 
 using GCharPtr = std::unique_ptr<char, decltype(&g_free)>;
 
@@ -95,6 +96,9 @@ struct AppState {
     GtkWidget* zoomLabel = nullptr;
     GtkWidget* lineEndingLabel = nullptr;
     GtkCssProvider* zoomProvider = nullptr;
+    // Present only while the system prefers a dark theme.
+    GtkCssProvider* darkProvider = nullptr;
+    bool darkTheme = false;
     int zoomPercent = kDefaultZoomPercent;
     GtkWidget* searchBar = nullptr;
     GtkWidget* findEntry = nullptr;

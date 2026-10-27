@@ -197,6 +197,7 @@ void buildMainWindow(AppState* state) {
     g_signal_connect(state->window, "close-request", G_CALLBACK(onCloseRequest), state);
     g_signal_connect(state->window, "destroy", G_CALLBACK(onWindowDestroy), state);
 
+    applyEditorColors(state);
     setEditorZoom(state, kDefaultZoomPercent);
     newTab(state);
 }

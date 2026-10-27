@@ -2,6 +2,7 @@
 
 #include "plumas/ui/AppState.hpp"
 #include "plumas/ui/Dialogs.hpp"
+#include "plumas/ui/EditorView.hpp"
 #include "plumas/ui/MainWindow.hpp"
 #include "plumas/ui/Resources.hpp"
 
@@ -38,8 +39,42 @@ void loadStyles() {
     g_object_unref(provider);
 }
 
-void onAppStartup(AdwApplication* /*app*/, gpointer /*userData*/) {
+// Follows the system light/dark preference: styles-dark.css only redefines
+// the palette's colour names, so it is layered on top of styles.css.
+void applyColorScheme(AppState* state) {
+    const bool dark = adw_style_manager_get_dark(adw_style_manager_get_default());
+    GdkDisplay* display = gdk_display_get_default();
+
+    if (dark && state->darkProvider == nullptr && hasBundledResource(kDarkStylesFileName)) {
+        state->darkProvider = gtk_css_provider_new();
+        gtk_css_provider_load_from_resource(
+            state->darkProvider, resourcePath(kDarkStylesFileName).c_str());
+        gtk_style_context_add_provider_for_display(
+            display,
+            GTK_STYLE_PROVIDER(state->darkProvider),
+            GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
+    } else if (!dark && state->darkProvider != nullptr) {
+        gtk_style_context_remove_provider_for_display(
+            display, GTK_STYLE_PROVIDER(state->darkProvider));
+        g_clear_object(&state->darkProvider);
+    }
+
+    state->darkTheme = dark;
+    if (state->textView != nullptr) {
+        applyEditorColors(state);
+    }
+}
+
+void onDarkChanged(GObject* /*styleManager*/, GParamSpec* /*property*/, gpointer userData) {
+    applyColorScheme(static_cast<AppState*>(userData));
+}
+
+void onAppStartup(AdwApplication* /*app*/, gpointer userData) {
+    AppState* state = static_cast<AppState*>(userData);
     loadStyles();
+    applyColorScheme(state);
+    g_signal_connect(
+        adw_style_manager_get_default(), "notify::dark", G_CALLBACK(onDarkChanged), state);
 }
 
 void ensureMainWindow(AppState* state, AdwApplication* app) {
@@ -102,7 +137,7 @@ int run(int argc, char** argv) {
         G_APPLICATION_DEFAULT_FLAGS | G_APPLICATION_HANDLES_OPEN);
 
     state.app = ADW_APPLICATION(adw_application_new(kAppId, appFlags));
-    g_signal_connect(state.app, "startup", G_CALLBACK(onAppStartup), nullptr);
+    g_signal_connect(state.app, "startup", G_CALLBACK(onAppStartup), &state);
     g_signal_connect(state.app, "activate", G_CALLBACK(onActivate), &state);
     g_signal_connect(state.app, "open", G_CALLBACK(onOpen), &state);
 
