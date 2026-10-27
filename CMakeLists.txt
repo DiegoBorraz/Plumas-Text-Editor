@@ -100,6 +100,7 @@ add_custom_command(
 add_library(plumas_ui
     src/ui/Application.cpp
     src/ui/MainWindow.cpp
+    src/ui/MenuBar.cpp
     src/ui/EditorView.cpp
     src/ui/TitleBar.cpp
     src/ui/Dialogs.cpp

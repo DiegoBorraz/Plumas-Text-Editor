@@ -167,6 +167,14 @@ void testUtf8Validation() {
     CHECK(!isValidUtf8Text("\x80"));              // stray continuation
 }
 
+void testLineEndingDetection() {
+    CHECK(usesCrlfLineEndings("a\r\nb\n"));
+    CHECK(!usesCrlfLineEndings("a\nb\r\n"));
+    CHECK(!usesCrlfLineEndings("no newline"));
+    CHECK(!usesCrlfLineEndings("\n"));
+    CHECK(!usesCrlfLineEndings(""));
+}
+
 void testDocumentRejectsNonText() {
     TempDir dir;
     const fs::path withNul = dir.path / "nul.txt";
@@ -304,6 +312,7 @@ int main() {
         {"paths", testPaths},
         {"readLimits", testReadLimits},
         {"utf8Validation", testUtf8Validation},
+        {"lineEndingDetection", testLineEndingDetection},
         {"documentRejectsNonText", testDocumentRejectsNonText},
         {"documentRoundTrip", testDocumentRoundTrip},
 #ifndef _WIN32

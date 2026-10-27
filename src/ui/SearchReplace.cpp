@@ -35,10 +35,17 @@ GtkTextTag* ensureSearchHighlightTag(AppState* state) {
 
 void clearSearchHighlight(AppState* state) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
+    // The tag only exists after the first search.
+    GtkTextTag* tag =
+        gtk_text_tag_table_lookup(gtk_text_buffer_get_tag_table(buffer), kSearchHighlightTag);
+    if (tag == nullptr) {
+        return;
+    }
+
     GtkTextIter start;
     GtkTextIter end;
     gtk_text_buffer_get_bounds(buffer, &start, &end);
-    gtk_text_buffer_remove_tag_by_name(buffer, kSearchHighlightTag, &start, &end);
+    gtk_text_buffer_remove_tag(buffer, tag, &start, &end);
 }
 
 void highlightMatch(AppState* state, const GtkTextIter* matchStart, const GtkTextIter* matchEnd) {

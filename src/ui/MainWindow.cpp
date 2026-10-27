@@ -2,6 +2,7 @@
 
 #include "plumas/ui/Dialogs.hpp"
 #include "plumas/ui/EditorView.hpp"
+#include "plumas/ui/MenuBar.hpp"
 #include "plumas/ui/SearchReplace.hpp"
 #include "plumas/ui/TitleBar.hpp"
 #include "plumas/ui/UiHelpers.hpp"
@@ -29,61 +30,30 @@ std::optional<GdkRectangle> primaryMonitorGeometry(GdkDisplay* display) {
     return geometry;
 }
 
-void onNewClicked(GtkButton* /*button*/, gpointer userData) {
-    AppState* state = static_cast<AppState*>(userData);
-    runWithUnsavedCheck(state, newDocument);
+GtkWidget* createStatusSegment(GtkWidget* statusBar, const char* text) {
+    GtkWidget* separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
+    gtk_box_append(GTK_BOX(statusBar), separator);
+
+    GtkWidget* label = gtk_label_new(text);
+    gtk_widget_add_css_class(label, "status-segment");
+    gtk_box_append(GTK_BOX(statusBar), label);
+    return label;
 }
 
-void onOpenClicked(GtkButton* /*button*/, gpointer userData) {
-    AppState* state = static_cast<AppState*>(userData);
-    runWithUnsavedCheck(state, showOpenDialog);
-}
+GtkWidget* createStatusBar(AppState* state) {
+    state->statusBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(state->statusBar, "status-bar");
 
-void onSaveClicked(GtkButton* /*button*/, gpointer userData) {
-    AppState* state = static_cast<AppState*>(userData);
-    if (isSaveAvailable(*state->document)) {
-        saveDocument(state, false);
-    }
-}
+    state->positionLabel = gtk_label_new(nullptr);
+    gtk_widget_add_css_class(state->positionLabel, "status-segment");
+    gtk_label_set_xalign(GTK_LABEL(state->positionLabel), 0.0f);
+    gtk_widget_set_hexpand(state->positionLabel, TRUE);
+    gtk_box_append(GTK_BOX(state->statusBar), state->positionLabel);
 
-GtkWidget* createToolbar(AppState* state) {
-    GtkWidget* toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_add_css_class(toolbar, "editor-toolbar");
-    gtk_widget_set_margin_start(toolbar, 12);
-    gtk_widget_set_margin_end(toolbar, 12);
-
-    GtkWidget* newButton = gtk_button_new_with_label("New");
-    GtkWidget* openButton = gtk_button_new_with_label("Open");
-    state->saveButton = gtk_button_new_with_label("Save");
-
-    gtk_widget_set_sensitive(state->saveButton, FALSE);
-
-    g_signal_connect(newButton, "clicked", G_CALLBACK(onNewClicked), state);
-    g_signal_connect(openButton, "clicked", G_CALLBACK(onOpenClicked), state);
-    g_signal_connect(state->saveButton, "clicked", G_CALLBACK(onSaveClicked), state);
-
-    gtk_box_append(GTK_BOX(toolbar), newButton);
-    gtk_box_append(GTK_BOX(toolbar), openButton);
-    gtk_box_append(GTK_BOX(toolbar), state->saveButton);
-
-    return toolbar;
-}
-
-GtkWidget* createFooter() {
-    GtkWidget* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_set_margin_start(footer, 20);
-    gtk_widget_set_margin_end(footer, 20);
-    gtk_widget_set_margin_top(footer, 4);
-    gtk_widget_set_margin_bottom(footer, 12);
-
-    GtkWidget* tagline = gtk_label_new(kFooterTagline);
-    gtk_label_set_xalign(GTK_LABEL(tagline), 0.5f);
-    gtk_widget_add_css_class(tagline, "footer-tagline");
-    setLabelStyle(GTK_LABEL(tagline), 14, true);
-    gtk_widget_set_hexpand(tagline, TRUE);
-
-    gtk_box_append(GTK_BOX(footer), tagline);
-    return footer;
+    state->zoomLabel = createStatusSegment(state->statusBar, nullptr);
+    state->lineEndingLabel = createStatusSegment(state->statusBar, nullptr);
+    createStatusSegment(state->statusBar, "UTF-8");
+    return state->statusBar;
 }
 
 gboolean onCloseRequest(GtkWindow* /*window*/, gpointer userData) {
@@ -166,55 +136,6 @@ void addWindowResizeHandles(GtkWidget* overlay, AppState* state) {
     }
 }
 
-gboolean onWindowKey(
-    GtkEventControllerKey* /*controller*/,
-    guint keyval,
-    guint /*keycode*/,
-    GdkModifierType modifiers,
-    gpointer userData) {
-    AppState* state = static_cast<AppState*>(userData);
-    const bool control = (modifiers & GDK_CONTROL_MASK) != 0;
-    const bool shift = (modifiers & GDK_SHIFT_MASK) != 0;
-
-    if (!control) {
-        return FALSE;
-    }
-
-    if (keyval == GDK_KEY_n || keyval == GDK_KEY_N) {
-        runWithUnsavedCheck(state, newDocument);
-        return TRUE;
-    }
-
-    if (keyval == GDK_KEY_o || keyval == GDK_KEY_O) {
-        runWithUnsavedCheck(state, showOpenDialog);
-        return TRUE;
-    }
-
-    if ((keyval == GDK_KEY_s || keyval == GDK_KEY_S) && shift) {
-        saveDocument(state, true);
-        return TRUE;
-    }
-
-    if (keyval == GDK_KEY_s || keyval == GDK_KEY_S) {
-        if (isSaveAvailable(*state->document)) {
-            saveDocument(state, false);
-        }
-        return TRUE;
-    }
-
-    if (keyval == GDK_KEY_f || keyval == GDK_KEY_F) {
-        toggleSearchReplaceBar(state);
-        return TRUE;
-    }
-
-    if (keyval == GDK_KEY_q || keyval == GDK_KEY_Q) {
-        runWithUnsavedCheck(state, closeWindow);
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
 } // namespace
 
 void buildMainWindow(AppState* state) {
@@ -227,6 +148,7 @@ void buildMainWindow(AppState* state) {
     gtk_window_set_default_size(state->window, defaultWidth, defaultHeight);
     gtk_window_set_resizable(state->window, TRUE);
     gtk_window_set_title(state->window, kWindowTitle);
+    gtk_window_set_icon_name(state->window, kAppId);
     gtk_window_set_decorated(state->window, platform::usesNativeWindowChrome());
     gtk_widget_add_css_class(GTK_WIDGET(state->window), "plumas-app");
 
@@ -247,12 +169,8 @@ void buildMainWindow(AppState* state) {
     gtk_widget_set_hexpand(rootBox, TRUE);
     gtk_widget_set_overflow(rootBox, GTK_OVERFLOW_HIDDEN);
 
+    installWindowActions(state);
     gtk_box_append(GTK_BOX(rootBox), createTitleBar(state));
-
-    GtkWidget* toolbar = createToolbar(state);
-    gtk_widget_set_margin_top(toolbar, 8);
-    gtk_widget_set_margin_bottom(toolbar, 8);
-    gtk_box_append(GTK_BOX(rootBox), toolbar);
 
     GtkWidget* editorView = createEditorView(state);
     GtkWidget* searchBar = createSearchReplaceBar(state);
@@ -261,7 +179,7 @@ void buildMainWindow(AppState* state) {
     gtk_widget_set_vexpand(editorView, TRUE);
     gtk_widget_set_hexpand(editorView, TRUE);
     gtk_box_append(GTK_BOX(rootBox), editorView);
-    gtk_box_append(GTK_BOX(rootBox), createFooter());
+    gtk_box_append(GTK_BOX(rootBox), createStatusBar(state));
 
     GtkWidget* windowOverlay = gtk_overlay_new();
     gtk_widget_set_vexpand(windowOverlay, TRUE);
@@ -275,14 +193,12 @@ void buildMainWindow(AppState* state) {
     gtk_box_append(GTK_BOX(shell), state->toastOverlay);
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(state->window), shell);
 
-    GtkEventController* windowKeys = gtk_event_controller_key_new();
-    g_signal_connect(windowKeys, "key-pressed", G_CALLBACK(onWindowKey), state);
-    gtk_widget_add_controller(GTK_WIDGET(state->window), windowKeys);
-
     g_signal_connect(state->window, "close-request", G_CALLBACK(onCloseRequest), state);
     g_signal_connect(state->window, "destroy", G_CALLBACK(onWindowDestroy), state);
 
     state->document = std::make_unique<core::Document>();
+    state->usesCrlf = platform::usesCrlfByDefault();
+    setEditorZoom(state, kDefaultZoomPercent);
     setEditorText(state, "");
 }
 

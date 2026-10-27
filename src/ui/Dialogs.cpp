@@ -5,6 +5,7 @@
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/FileIO.hpp"
+#include "plumas/platform/Paths.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -183,6 +184,7 @@ void tryOpenPath(AppState* state, const std::string& path) {
 
     abandonReplaceAll(state);
     state->document = std::move(document);
+    state->usesCrlf = core::usesCrlfLineEndings(*content);
     setEditorText(state, content->c_str());
     persistRecent(state, state->document->filePath());
     showToast(state, "File opened.");
@@ -250,6 +252,7 @@ void closeWindow(AppState* state) {
 void newDocument(AppState* state) {
     abandonReplaceAll(state);
     state->document = std::make_unique<core::Document>();
+    state->usesCrlf = platform::usesCrlfByDefault();
     setEditorText(state, "");
     showToast(state, "New document created.");
 }

@@ -44,4 +44,12 @@ bool usesNativeWindowChrome() {
 #endif
 }
 
+bool usesCrlfByDefault() {
+#if defined(_WIN32)
+    return true;
+#else
+    return false;
+#endif
+}
+
 } // namespace plumas::platform

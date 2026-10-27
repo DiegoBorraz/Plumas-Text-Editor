@@ -1,4 +1,5 @@
 #include "plumas/ui/TitleBar.hpp"
+#include "plumas/ui/MenuBar.hpp"
 #include "plumas/ui/Resources.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
@@ -11,6 +12,8 @@
 namespace plumas::ui {
 
 namespace {
+
+constexpr int kTitleIconSize = 16;
 
 void updateMaximizeIcon(AppState* state) {
     if (state->maximizeButton == nullptr) {
@@ -74,41 +77,36 @@ void attachTitleBarDrag(GtkWidget* widget, AppState* state) {
 
 GtkWidget* createTitleLogoFromResource() {
     GtkWidget* logo = gtk_image_new_from_resource(resourcePath(kIconFileName).c_str());
-    gtk_image_set_pixel_size(GTK_IMAGE(logo), 30);
-    gtk_widget_set_size_request(logo, 30, 30);
+    gtk_image_set_pixel_size(GTK_IMAGE(logo), kTitleIconSize);
     gtk_widget_set_valign(logo, GTK_ALIGN_CENTER);
     return logo;
 }
 
 GtkWidget* createTitleLogoFromFile(const std::string& iconPath) {
     GtkWidget* logo = gtk_image_new_from_file(iconPath.c_str());
-    gtk_image_set_pixel_size(GTK_IMAGE(logo), 30);
-    gtk_widget_set_size_request(logo, 30, 30);
+    gtk_image_set_pixel_size(GTK_IMAGE(logo), kTitleIconSize);
     gtk_widget_set_valign(logo, GTK_ALIGN_CENTER);
     return logo;
 }
 
 GtkWidget* createWindowControls(AppState* state) {
-    GtkWidget* controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget* controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(controls, "window-controls");
 
     GtkWidget* minimizeButton = gtk_button_new();
     gtk_button_set_icon_name(GTK_BUTTON(minimizeButton), "window-minimize-symbolic");
     gtk_widget_add_css_class(minimizeButton, "flat");
-    gtk_widget_set_size_request(minimizeButton, 24, 24);
     gtk_widget_set_tooltip_text(minimizeButton, "Minimize");
 
     state->maximizeButton = gtk_button_new();
     gtk_button_set_icon_name(GTK_BUTTON(state->maximizeButton), "window-maximize-symbolic");
     gtk_widget_add_css_class(state->maximizeButton, "flat");
-    gtk_widget_set_size_request(state->maximizeButton, 24, 24);
     gtk_widget_set_tooltip_text(state->maximizeButton, "Maximize");
 
     GtkWidget* closeButton = gtk_button_new();
     gtk_button_set_icon_name(GTK_BUTTON(closeButton), "window-close-symbolic");
     gtk_widget_add_css_class(closeButton, "flat");
     gtk_widget_add_css_class(closeButton, "window-close");
-    gtk_widget_set_size_request(closeButton, 24, 24);
     gtk_widget_set_tooltip_text(closeButton, "Close");
 
     g_signal_connect(minimizeButton, "clicked", G_CALLBACK(onMinimizeClicked), state);
@@ -122,48 +120,45 @@ GtkWidget* createWindowControls(AppState* state) {
     return controls;
 }
 
-} // namespace
+GtkWidget* createTitleRow(AppState* state) {
+    GtkWidget* titleRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(titleRow, "titlebar");
 
-GtkWidget* createTitleBar(AppState* state) {
-    GtkWidget* titleBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_add_css_class(titleBar, "titlebar");
-    gtk_widget_set_margin_start(titleBar, 12);
-    gtk_widget_set_margin_end(titleBar, 8);
-    gtk_widget_set_margin_top(titleBar, 12);
-
-    GtkWidget* titleLabel = gtk_label_new(kWindowTitle);
-    gtk_label_set_xalign(GTK_LABEL(titleLabel), 0.0f);
-    gtk_widget_add_css_class(titleLabel, "app-title");
-    setLabelStyle(GTK_LABEL(titleLabel), kAppTitleFontSizePt, true);
-
-    GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    // Icon and title form the drag area; the window buttons stay clickable.
+    GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_hexpand(titleGroup, TRUE);
     if (hasBundledResource(kIconFileName)) {
         gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromResource());
     } else if (const std::optional<std::string> iconPath =
                    findSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
         gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
     }
-    gtk_box_append(GTK_BOX(titleGroup), titleLabel);
 
-    state->pathLabel = gtk_label_new("(new document)");
-    gtk_label_set_xalign(GTK_LABEL(state->pathLabel), 0.5f);
-    gtk_widget_add_css_class(state->pathLabel, "document-path");
-    gtk_label_set_ellipsize(GTK_LABEL(state->pathLabel), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_widget_set_hexpand(state->pathLabel, TRUE);
+    state->titleLabel = gtk_label_new(kUntitledName);
+    gtk_widget_add_css_class(state->titleLabel, "document-title");
+    gtk_label_set_xalign(GTK_LABEL(state->titleLabel), 0.0f);
+    gtk_label_set_ellipsize(GTK_LABEL(state->titleLabel), PANGO_ELLIPSIZE_MIDDLE);
+    gtk_widget_set_hexpand(state->titleLabel, TRUE);
+    gtk_box_append(GTK_BOX(titleGroup), state->titleLabel);
 
-    gtk_box_append(GTK_BOX(titleBar), titleGroup);
-    gtk_box_append(GTK_BOX(titleBar), state->pathLabel);
+    gtk_box_append(GTK_BOX(titleRow), titleGroup);
+    gtk_box_append(GTK_BOX(titleRow), createWindowControls(state));
+    attachTitleBarDrag(titleGroup, state);
+    return titleRow;
+}
 
+} // namespace
+
+GtkWidget* createTitleBar(AppState* state) {
+    GtkWidget* chrome = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(chrome, "window-chrome");
+
+    // With native chrome the system already shows the title and buttons.
     if (!platform::usesNativeWindowChrome()) {
-        GtkWidget* windowControls = createWindowControls(state);
-        gtk_widget_set_halign(windowControls, GTK_ALIGN_END);
-        gtk_box_append(GTK_BOX(titleBar), windowControls);
-
-        attachTitleBarDrag(titleGroup, state);
-        attachTitleBarDrag(state->pathLabel, state);
+        gtk_box_append(GTK_BOX(chrome), createTitleRow(state));
     }
-
-    return titleBar;
+    gtk_box_append(GTK_BOX(chrome), createMenuBar());
+    return chrome;
 }
 
 } // namespace plumas::ui

@@ -16,8 +16,9 @@ namespace plumas::ui {
 
 constexpr const char* kAppId = "com.plumas.EditorTexto";
 constexpr const char* kWindowTitle = "Plumas Text Editor";
-constexpr int kAppTitleFontSizePt = 20;
-constexpr const char* kFooterTagline = "Lighter than Windows Notepad. - https://github.com/DiegoBorraz";
+constexpr const char* kAppShortName = "Plumas";
+constexpr const char* kUntitledName = "Untitled";
+constexpr int kDefaultZoomPercent = 100;
 constexpr const char* kIconFileName = "plumas-icon.webp";
 constexpr const char* kStylesFileName = "styles.css";
 
@@ -66,9 +67,17 @@ struct AppState {
     GtkWidget* textView = nullptr;
     GtkWidget* lineGutter = nullptr;
     GtkWidget* editorScroll = nullptr;
-    GtkWidget* pathLabel = nullptr;
-    GtkWidget* saveButton = nullptr;
+    // Null when the platform draws the window title (native chrome).
+    GtkWidget* titleLabel = nullptr;
     GtkWidget* maximizeButton = nullptr;
+    GtkWidget* statusBar = nullptr;
+    GtkWidget* positionLabel = nullptr;
+    GtkWidget* zoomLabel = nullptr;
+    GtkWidget* lineEndingLabel = nullptr;
+    GtkCssProvider* zoomProvider = nullptr;
+    int zoomPercent = kDefaultZoomPercent;
+    // Informational only: shows the convention of the file that was opened.
+    bool usesCrlf = false;
     GtkWidget* searchBar = nullptr;
     GtkWidget* findEntry = nullptr;
     GtkWidget* replaceEntry = nullptr;

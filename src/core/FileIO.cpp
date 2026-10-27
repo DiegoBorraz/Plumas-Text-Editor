@@ -184,6 +184,11 @@ bool isValidUtf8Text(const std::string_view text) {
     return true;
 }
 
+bool usesCrlfLineEndings(const std::string_view text) {
+    const std::size_t newline = text.find('\n');
+    return newline != std::string_view::npos && newline > 0 && text[newline - 1] == '\r';
+}
+
 FileReadResult readTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
     return platform::readRegularTextFile(path, maxBytes);
 }

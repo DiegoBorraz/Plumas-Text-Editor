@@ -22,6 +22,8 @@ const std::vector<std::string>& allowedTextFileExtensionNames();
 bool isAllowedTextFilePath(const std::filesystem::path& path);
 // True for UTF-8 without NUL bytes, the only text GtkTextBuffer accepts.
 bool isValidUtf8Text(std::string_view text);
+// Decided by the first line break, as Notepad does.
+bool usesCrlfLineEndings(std::string_view text);
 FileReadResult readTextFile(const std::filesystem::path& path, std::size_t maxBytes);
 bool isSafeRegularFileSize(const std::filesystem::path& path, std::size_t maxBytes);
 TextReplaceResult replaceAllInText(

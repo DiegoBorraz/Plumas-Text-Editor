@@ -1,22 +1,22 @@
-window {
-  border-radius: 0;
-  background-color: #cfd5e1;
-  color: #000000;
-}
+/* Windows 11 Notepad look: light chrome, white editor, thin status bar. */
 
 window.plumas-app {
   min-height: 0;
   min-width: 0;
+  border-radius: 8px;
+  background-color: #f3f3f3;
+  color: #1a1a1a;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
+  font-size: 10pt;
+}
+
+window.plumas-app.maximized {
+  border-radius: 0;
 }
 
 box.plumas-shell,
 box.plumas-root,
-box.editor-workspace,
-box.editor-row {
-  min-height: 0;
-  min-width: 0;
-}
-
+box.editor-row,
 scrolledwindow {
   min-height: 0;
   min-width: 0;
@@ -26,82 +26,114 @@ box.resize-handle {
   background-color: transparent;
 }
 
-box.editor-toolbar {
+/* Title row (Linux custom chrome only). */
+
+.titlebar {
+  min-height: 32px;
+  padding-left: 14px;
+}
+
+.document-title {
+  font-size: 9pt;
+}
+
+.window-controls button {
+  min-width: 46px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  -gtk-icon-size: 12px;
+}
+
+.window-controls button:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+.window-controls .window-close:hover {
+  background-color: #c42b1c;
+  color: #ffffff;
+}
+
+/* Menu row. */
+
+menubar.plumas-menubar {
+  padding: 2px 6px 4px 6px;
+  background: none;
+  box-shadow: none;
+}
+
+menubar.plumas-menubar > item {
+  padding: 4px 10px;
+  border-radius: 4px;
   min-height: 0;
 }
 
-box.editor-toolbar button {
-  min-height: 0;
-  min-width: 0;
-  padding: 2px 10px;
+menubar.plumas-menubar > item:hover,
+menubar.plumas-menubar > item:selected {
+  background-color: rgba(0, 0, 0, 0.06);
 }
 
-box.editor-toolbar button label {
-  font-size: 12px;
-  font-weight: bold;
-  color: #000000;
+/* Editor. */
+
+box.editor-row {
+  background-color: #ffffff;
+  border-top: 1px solid #e5e5e5;
 }
+
+textview.editor-text,
+textview.editor-text > text {
+  background-color: #ffffff;
+  color: #1a1a1a;
+  font-family: "Consolas", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+}
+
+textview.editor-text > text selection {
+  background-color: #0078d4;
+  color: #ffffff;
+}
+
+.line-gutter {
+  background-color: #ffffff;
+  color: #8a8a8a;
+  border-right: 1px solid #ededed;
+}
+
+/* Status bar. */
+
+box.status-bar {
+  min-height: 24px;
+  padding: 0 8px;
+  border-top: 1px solid #e5e5e5;
+  font-size: 9pt;
+  color: #1a1a1a;
+}
+
+box.status-bar separator {
+  margin: 5px 0;
+  background-color: #d6d6d6;
+  min-width: 1px;
+}
+
+label.status-segment {
+  padding: 0 14px;
+}
+
+/* Find and replace: a light card, as in Notepad's find box. */
 
 box.search-replace-bar {
-  background-color: #b8c0d0;
-  border-radius: 6px;
+  background-color: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
   padding: 8px 10px;
+  margin: 6px 8px;
 }
 
 box.search-replace-bar entry {
   min-height: 28px;
 }
 
-box.search-replace-bar label {
-  color: #000000;
-  font-weight: bold;
-}
-
 box.search-replace-bar button {
   min-height: 0;
   padding: 4px 10px;
-}
-
-box.search-replace-bar button label {
-  font-size: 12px;
-  color: #000000;
-}
-
-
-.window-controls button {
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
-  -gtk-icon-size: 14px;
-}
-
-.window-controls .window-close:hover {
-  background-color: #e81123;
-  color: white;
-}
-
-.titlebar {
-  min-height: 36px;
-}
-
-.app-title {
-  color: #000000;
-  opacity: 1;
-}
-
-.document-path {
-  color: #000000;
-  opacity: 1;
-  font-size: 14px;
-}
-
-.footer-tagline {
-  color: #000000;
-  opacity: 1;
-  font-size: 14px;
-}
-.editor-layer,
-.editor-layer > text {
-  background-color: transparent;
-  min-height: 0;
 }
