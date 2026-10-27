@@ -11,6 +11,9 @@ public:
     Config();
 
     static std::filesystem::path defaultPath();
+    // Where releases named "Plumas" stored the config; read once if the
+    // current file does not exist yet.
+    static std::filesystem::path legacyPath();
 
     bool load();
     bool save() const;

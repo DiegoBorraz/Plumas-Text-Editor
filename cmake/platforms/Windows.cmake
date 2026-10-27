@@ -18,10 +18,10 @@ plumas_configure_platform_target(plumas_platform)
 
 target_link_libraries(plumas_core PUBLIC plumas_platform)
 
-set_target_properties(plumas-text-editor PROPERTIES WIN32_EXECUTABLE TRUE)
+set_target_properties(pluma-text PROPERTIES WIN32_EXECUTABLE TRUE)
 
-install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS pluma-text RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(
     FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE
-    DESTINATION share/plumas-text-editor
+    DESTINATION share/pluma-text
 )

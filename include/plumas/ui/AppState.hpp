@@ -15,9 +15,9 @@
 
 namespace plumas::ui {
 
-constexpr const char* kAppId = "com.plumas.EditorTexto";
-constexpr const char* kWindowTitle = "Plumas Text Editor";
-constexpr const char* kAppShortName = "Plumas";
+constexpr const char* kAppId = "com.plumatext.PlumaText";
+constexpr const char* kWindowTitle = "Pluma-Text";
+constexpr const char* kAppShortName = "Pluma-Text";
 constexpr const char* kUntitledName = "Untitled";
 constexpr int kDefaultZoomPercent = 100;
 constexpr const char* kIconFileName = "plumas-icon.webp";

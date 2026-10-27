@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(plumas-text-editor VERSION 0.1.0 LANGUAGES C CXX)
+project(pluma-text VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -118,10 +118,10 @@ target_compile_definitions(plumas_ui PRIVATE
 
 # The generated GResource registers itself from a constructor; linking it
 # directly into the executable keeps the linker from dropping it.
-add_executable(plumas-text-editor src/main.cpp ${PLUMAS_GRESOURCE_C})
-target_link_libraries(plumas-text-editor PRIVATE plumas_ui)
-target_link_options(plumas-text-editor PRIVATE ${PLUMAS_LINK_FLAGS})
-target_compile_options(plumas-text-editor PRIVATE
+add_executable(pluma-text src/main.cpp ${PLUMAS_GRESOURCE_C})
+target_link_libraries(pluma-text PRIVATE plumas_ui)
+target_link_options(pluma-text PRIVATE ${PLUMAS_LINK_FLAGS})
+target_compile_options(pluma-text PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${PLUMAS_COMPILE_FLAGS}>
     ${PLUMAS_SANITIZER_FLAGS})
 

@@ -14,7 +14,7 @@ namespace plumas::ui {
 
 namespace {
 
-constexpr const char kResourceBase[] = "/com/plumas/EditorTexto/";
+constexpr const char kResourceBase[] = "/com/plumatext/PlumaText/";
 
 bool fileExists(const std::filesystem::path& path) {
     std::error_code error;

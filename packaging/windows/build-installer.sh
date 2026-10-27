@@ -55,8 +55,8 @@ mkdir -p "$PACKAGING_DIR/dist"
 echo "==> Gerando instalador Inno Setup..."
 (
     cd "$PACKAGING_DIR"
-    iscc PlumasTextEditor.iss
+    iscc PlumaText.iss
 )
 
 echo ""
-echo "Instalador criado em: $PACKAGING_DIR/dist/PlumasTextEditor-0.1.0-setup.exe"
+echo "Instalador criado em: $PACKAGING_DIR/dist/PlumaText-0.1.0-setup.exe"

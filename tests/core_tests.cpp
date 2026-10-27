@@ -296,6 +296,22 @@ void testConfig() {
     CHECK(nonUtf8.recentFiles().empty());
     CHECK(nonUtf8.save());
 
+    // Recent files survive the rename from Plumas: the old config is read
+    // when the new one does not exist yet, and is left in place.
+    const fs::path legacyFile = dir.path / "legacy-notes.txt";
+    fs::create_directories(Config::legacyPath().parent_path());
+    std::ofstream(Config::legacyPath())
+        << R"({"recentFiles": [")" << pathToUtf8(legacyFile) << R"("]})";
+    fs::remove(Config::defaultPath());
+    Config migrated;
+    CHECK(migrated.load());
+    CHECK(migrated.recentFiles().size() == 1);
+    CHECK(migrated.recentFiles().front() == pathToUtf8(normalizePath(pathToUtf8(legacyFile)).value()));
+    CHECK(migrated.save());
+    CHECK(fs::exists(Config::defaultPath()));
+    CHECK(fs::exists(Config::legacyPath()));
+    CHECK(Config::defaultPath().parent_path().filename() == "pluma-text");
+
     std::ofstream(Config::defaultPath()) << "{ not json";
     Config broken;
     CHECK(!broken.load());

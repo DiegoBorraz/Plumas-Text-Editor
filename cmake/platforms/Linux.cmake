@@ -23,9 +23,6 @@ endif()
 add_library(plumas_platform ${PLUMAS_PLATFORM_SOURCES})
 target_include_directories(plumas_platform PUBLIC include)
 target_compile_options(plumas_platform PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
-target_compile_definitions(plumas_platform PRIVATE
-    $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>
-)
 
 if(WIN32)
     target_link_libraries(plumas_platform PUBLIC shell32)
@@ -35,24 +32,24 @@ plumas_configure_platform_target(plumas_platform)
 
 target_link_libraries(plumas_core PUBLIC plumas_platform)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT WIN32)
-    target_link_options(plumas-text-editor PRIVATE -Wl,-z,relro -Wl,-z,now -pie ${PLUMAS_SANITIZER_FLAGS})
+if(PLUMAS_SANITIZER_FLAGS)
+    target_link_options(pluma-text PRIVATE ${PLUMAS_SANITIZER_FLAGS})
 endif()
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/packaging/debian/plumas-text-editor.desktop.in
-    ${CMAKE_CURRENT_BINARY_DIR}/plumas-text-editor.desktop
+    ${CMAKE_SOURCE_DIR}/packaging/debian/com.plumatext.PlumaText.desktop.in
+    ${CMAKE_CURRENT_BINARY_DIR}/com.plumatext.PlumaText.desktop
     @ONLY
 )
 configure_file(
-    ${CMAKE_SOURCE_DIR}/packaging/debian/com.plumas.EditorTexto.metainfo.xml.in
-    ${CMAKE_CURRENT_BINARY_DIR}/com.plumas.EditorTexto.metainfo.xml
+    ${CMAKE_SOURCE_DIR}/packaging/debian/com.plumatext.PlumaText.metainfo.xml.in
+    ${CMAKE_CURRENT_BINARY_DIR}/com.plumatext.PlumaText.metainfo.xml
     @ONLY
 )
 
 set(PLUMAS_ICON_SOURCE ${CMAKE_SOURCE_DIR}/plumas.png)
 set(PLUMAS_ICON_FALLBACK ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp)
-set(PLUMAS_ICON_NAME plumas-text-editor)
+set(PLUMAS_ICON_NAME com.plumatext.PlumaText)
 set(PLUMAS_ICON_SIZES 16 24 32 48 64 128 256 512)
 
 if(EXISTS "${PLUMAS_ICON_SOURCE}")
@@ -86,21 +83,21 @@ if(DEFINED PLUMAS_ICON_INPUT)
     add_custom_target(plumas_icons DEPENDS ${PLUMAS_GENERATED_ICONS})
 endif()
 
-install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS pluma-text RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/plumas-text-editor.desktop
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/com.plumatext.PlumaText.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
 install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/com.plumas.EditorTexto.metainfo.xml
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/com.plumatext.PlumaText.metainfo.xml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
 )
 
 install(
     FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/plumas-text-editor
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/pluma-text
 )
 
 if(TARGET plumas_icons)

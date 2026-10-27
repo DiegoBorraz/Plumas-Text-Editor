@@ -26,7 +26,7 @@ void loadStyles() {
                stylesPath.has_value()) {
         gtk_css_provider_load_from_path(provider, stylesPath->c_str());
     } else {
-        std::cerr << "plumas: styles.css not found\n";
+        std::cerr << "pluma-text: styles.css not found\n";
         g_object_unref(provider);
         return;
     }
@@ -90,6 +90,9 @@ int run(int argc, char** argv) {
     // The software renderer uses ~100 MB less RSS than the GL/Vulkan renderers
     // and is fast enough for a plain text editor. GSK_RENDERER still overrides it.
     g_setenv("GSK_RENDERER", "cairo", FALSE);
+    // X11 WM_CLASS comes from the program name; matching the app ID lets the
+    // desktop file (StartupWMClass) pair the window with its icon.
+    g_set_prgname(kAppId);
     adw_init();
 
     AppState state{};

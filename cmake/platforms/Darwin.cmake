@@ -22,20 +22,20 @@ plumas_configure_platform_target(plumas_platform)
 
 target_link_libraries(plumas_core PUBLIC plumas_platform)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_options(plumas-text-editor PRIVATE -Wl,-z,relro -Wl,-z,now -pie ${PLUMAS_SANITIZER_FLAGS})
+if(PLUMAS_SANITIZER_FLAGS)
+    target_link_options(pluma-text PRIVATE ${PLUMAS_SANITIZER_FLAGS})
 endif()
 
 if(PLUMAS_BUILD_MACOS)
-    set_target_properties(plumas-text-editor PROPERTIES
+    set_target_properties(pluma-text PROPERTIES
         MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_GUI_IDENTIFIER "com.plumas.EditorTexto"
-        MACOSX_BUNDLE_BUNDLE_NAME "Plumas Text Editor"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.plumatext.PlumaText"
+        MACOSX_BUNDLE_BUNDLE_NAME "Pluma-Text"
     )
 endif()
 
-install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS pluma-text RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(
     FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE
-    DESTINATION share/doc/plumas-text-editor
+    DESTINATION share/doc/pluma-text
 )

@@ -34,14 +34,24 @@ std::filesystem::path Config::defaultPath() {
     return platform::configDirectory() / "config.json";
 }
 
+std::filesystem::path Config::legacyPath() {
+    // Releases named "Plumas" kept their config in a sibling directory.
+    return platform::configDirectory().parent_path() / "plumas-text-editor" / "config.json";
+}
+
 bool Config::load() {
     std::error_code error;
-    if (!std::filesystem::exists(path_, error)) {
+    std::filesystem::path source = path_;
+    if (!std::filesystem::exists(source, error) && path_ == defaultPath()) {
+        // The next save writes the new location; the old file is left alone.
+        source = legacyPath();
+    }
+    if (!std::filesystem::exists(source, error)) {
         recentFiles_.clear();
         return true;
     }
 
-    const FileReadResult fileContent = readTextFile(path_, kMaxConfigJsonSize);
+    const FileReadResult fileContent = readTextFile(source, kMaxConfigJsonSize);
     if (fileContent.error != FileIoError::None) {
         recentFiles_.clear();
         return false;

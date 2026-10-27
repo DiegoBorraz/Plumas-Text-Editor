@@ -196,7 +196,7 @@ bool writeTextFileAtomic(
 
     std::filesystem::create_directories(parent, error);
 
-    std::string tempPath = (parent / (path.filename().string() + ".plumas-tmp-XXXXXX")).string();
+    std::string tempPath = (parent / (path.filename().string() + ".pluma-text-tmp-XXXXXX")).string();
     const int fd = ::mkstemp(tempPath.data());
     if (fd < 0) {
         return false;

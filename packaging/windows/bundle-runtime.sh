@@ -22,7 +22,7 @@ require_command ldd
 require_command cp
 require_command mkdir
 
-EXE="$BUILD_DIR/plumas-text-editor.exe"
+EXE="$BUILD_DIR/pluma-text.exe"
 if [[ ! -x "$EXE" ]]; then
     echo "Erro: binario nao encontrado em $EXE" >&2
     exit 1
@@ -31,7 +31,7 @@ fi
 rm -rf "$STAGING"
 mkdir -p "$STAGING/bin" "$STAGING/share/glib-2.0/schemas" "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders"
 
-cp "$EXE" "$STAGING/plumas-text-editor.exe"
+cp "$EXE" "$STAGING/pluma-text.exe"
 cp "$ROOT/packaging/debian/LICENSE" "$STAGING/LICENSE"
 
 mapfile -t runtime_libs < <(ldd "$EXE" | awk '/=>/ {print $3}' | grep -E "${MINGW_PREFIX}/|/ucrt64/" | sort -u)

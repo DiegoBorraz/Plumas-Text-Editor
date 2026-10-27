@@ -191,7 +191,7 @@ bool writeTextFileAtomic(
     std::filesystem::create_directories(parent, error);
 
     const std::filesystem::path tempPath =
-        parent / (path.filename().wstring() + L".plumas-tmp");
+        parent / (path.filename().wstring() + L".pluma-text-tmp");
 
     const HANDLE handle = CreateFileW(
         tempPath.wstring().c_str(),

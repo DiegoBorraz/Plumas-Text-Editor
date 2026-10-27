@@ -1,4 +1,4 @@
-# Plumas Text Editor
+# Pluma-Text
 
 Editor de texto leve multiplataforma (Linux e Windows; macOS em preparação), escrito em C++20 com GTK4 e libadwaita. Focado em abrir, editar e salvar arquivos de texto comuns, com interface em inglês, números de linha, busca/substituição e empacotamento `.deb` (Ubuntu/Debian) e instalador `.exe` (Windows).
 
@@ -15,7 +15,7 @@ Editor de texto leve multiplataforma (Linux e Windows; macOS em preparação), e
 - Busca e substituição com **Ctrl+F** (Find, Replace, Replace All, Previous/Next)
 - Abertura de arquivos pela linha de comando ou “Abrir com” (`G_APPLICATION_HANDLES_OPEN`)
 - Visual claro no estilo do Notepad do Windows 11
-- Lista de arquivos recentes em `~/.config/plumas-text-editor/config.json`
+- Lista de arquivos recentes em `~/.config/pluma-text/config.json` (lida de `~/.config/plumas-text-editor/` se vier de uma versão antiga)
 - Limite de documento de 50 MB
 - Recursos embutidos via GResource (CSS e ícone na barra de título)
 - Ícones do menu de aplicativos (tema hicolor) gerados a partir de `plumas.png`
@@ -171,13 +171,13 @@ Na raiz do repositório:
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/plumas-text-editor
+./build/pluma-text
 ```
 
 Abrir um arquivo pela CLI:
 
 ```bash
-./build/plumas-text-editor /caminho/para/arquivo.txt
+./build/pluma-text /caminho/para/arquivo.txt
 ```
 
 Atalhos úteis na interface:
@@ -195,7 +195,7 @@ Build com sanitizers (depuração):
 ```bash
 cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug -DPLUMAS_ENABLE_SANITIZERS=ON
 cmake --build build-asan
-./build-asan/plumas-text-editor
+./build-asan/pluma-text
 ```
 
 ## Testes
@@ -232,7 +232,7 @@ Opção para reutilizar build existente (só empacotar):
 ### 2. Instalar ou reinstalar
 
 ```bash
-sudo apt install --reinstall ./packaging/debian/dist/plumas-text-editor_0.1.0_amd64.deb
+sudo apt install --reinstall ./packaging/debian/dist/pluma-text_0.1.0_amd64.deb
 ```
 
 Ajuste o nome do arquivo se a versão ou arquitetura forem diferentes:
@@ -244,28 +244,28 @@ ls packaging/debian/dist/
 ### 3. Executar a versão instalada
 
 ```bash
-plumas-text-editor
+pluma-text
 ```
 
-Ou pelo menu de aplicativos: **Plumas Text Editor**.
+Ou pelo menu de aplicativos: **Pluma-Text**.
 
 ### Instalador — local e nome
 
 | Item | Valor |
 |------|--------|
 | **Pasta** | `packaging/debian/dist/` |
-| **Nome do pacote** | `plumas-text-editor_0.1.0_amd64.deb` |
-| **Comando no terminal** | `plumas-text-editor` |
-| **Binário instalado** | `/usr/bin/plumas-text-editor` |
-| **Desktop entry** | `/usr/share/applications/plumas-text-editor.desktop` |
-| **Ícones do menu** | `/usr/share/icons/hicolor/*/apps/plumas-text-editor.png` |
-| **App ID** | `com.plumas.EditorTexto` |
+| **Nome do pacote** | `pluma-text_0.1.0_amd64.deb` (substitui o pacote antigo `plumas-text-editor`) |
+| **Comando no terminal** | `pluma-text` |
+| **Binário instalado** | `/usr/bin/pluma-text` |
+| **Desktop entry** | `/usr/share/applications/com.plumatext.PlumaText.desktop` |
+| **Ícones do menu** | `/usr/share/icons/hicolor/*/apps/com.plumatext.PlumaText.png` |
+| **App ID** | `com.plumatext.PlumaText` |
 | **Versão** | Definida em `CMakeLists.txt` (`project(... VERSION 0.1.0)`) |
 
 ### Desinstalar
 
 ```bash
-sudo apt remove plumas-text-editor
+sudo apt remove pluma-text
 ```
 
 ## Build e instalador no Windows
@@ -294,8 +294,8 @@ O script compila em `build-win/`, monta o bundle GTK em `packaging/windows/stagi
 | Item | Valor |
 |------|--------|
 | **Pasta** | `packaging/windows/dist/` |
-| **Instalador** | `PlumasTextEditor-0.1.0-setup.exe` |
-| **Config do usuário** | `%APPDATA%\plumas-text-editor\config.json` |
+| **Instalador** | `PlumaText-0.1.0-setup.exe` |
+| **Config do usuário** | `%APPDATA%\pluma-text\config.json` |
 
 Checklist de QA manual: [`packaging/windows/QA.md`](packaging/windows/QA.md).
 
@@ -303,7 +303,7 @@ No Windows a janela usa **decorations nativas** do sistema; no Linux mantém bar
 
 ## Licença
 
-Distribuído sob a licença **Plumas-Free-Non-Commercial-1.0** (uso livre, sem monetização). Texto completo em [`LICENSE`](LICENSE) e [`packaging/debian/LICENSE`](packaging/debian/LICENSE).
+Distribuído sob a licença **Pluma-Text-Free-Non-Commercial-1.0** (uso livre, sem monetização). Texto completo em [`LICENSE`](LICENSE) e [`packaging/debian/LICENSE`](packaging/debian/LICENSE).
 
 ## Autor
 

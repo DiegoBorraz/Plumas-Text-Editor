@@ -17,7 +17,7 @@ namespace plumas::platform {
 
 namespace {
 
-constexpr const char kAppConfigDirName[] = "plumas-text-editor";
+constexpr const char kAppConfigDirName[] = "pluma-text";
 
 } // namespace
 
