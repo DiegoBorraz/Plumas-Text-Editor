@@ -59,6 +59,17 @@ endif()
 
 set(PLUMAS_SANITIZER_FLAGS "")
 
+# libFuzzer targets in tests/fuzz (Clang only). Every target is built with
+# coverage instrumentation so the fuzzer can see into plumas_core.
+option(PLUMAS_BUILD_FUZZERS "Build the libFuzzer targets (requires Clang)" OFF)
+if(PLUMAS_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "PLUMAS_BUILD_FUZZERS requires Clang (CXX=clang++).")
+    endif()
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 option(PLUMAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 if(PLUMAS_ENABLE_SANITIZERS)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -141,4 +152,12 @@ if(PLUMAS_BUILD_TESTS)
     target_link_libraries(plumas_core_tests PRIVATE plumas_core)
     target_compile_options(plumas_core_tests PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
     add_test(NAME plumas_core_tests COMMAND plumas_core_tests)
+endif()
+
+if(PLUMAS_BUILD_FUZZERS)
+    foreach(fuzzer fuzz_text fuzz_config)
+        add_executable(${fuzzer} tests/fuzz/${fuzzer}.cpp)
+        target_link_libraries(${fuzzer} PRIVATE plumas_core PkgConfig::GIO)
+        target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer)
+    endforeach()
 endif()

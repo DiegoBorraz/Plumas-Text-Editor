@@ -58,6 +58,35 @@ jobs:
       - name: Test (ASan/UBSan)
         run: ctest --test-dir build-asan --output-on-failure
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            pkg-config \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libglib2.0-dev \
+            nlohmann-json3-dev
+
+      - name: Build fuzzers
+        run: |
+          CC=clang CXX=clang++ cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DPLUMAS_BUILD_FUZZERS=ON
+          cmake --build build-fuzz --target fuzz_text fuzz_config
+
+      # A short smoke run per push; longer campaigns are run locally.
+      - name: Fuzz (60 s each)
+        run: |
+          mkdir -p corpus-text corpus-config
+          ./build-fuzz/fuzz_text -max_total_time=60 -max_len=4096 corpus-text
+          ./build-fuzz/fuzz_config -max_total_time=60 -max_len=4096 corpus-config
+
   build-windows:
     runs-on: windows-latest
     defaults:

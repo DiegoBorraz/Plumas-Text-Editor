@@ -192,6 +192,8 @@ Atalhos úteis na interface:
 - **Ctrl +** / **Ctrl -** / **Ctrl 0** ou **Ctrl+roda** — zoom
 - **Ctrl+Q** — sair (pergunta sobre cada aba não salva)
 
+Fuzzing (libFuzzer, Clang): veja [`tests/fuzz/README.md`](tests/fuzz/README.md).
+
 Build com sanitizers (depuração):
 
 ```bash
