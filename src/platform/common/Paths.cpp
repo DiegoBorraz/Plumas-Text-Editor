@@ -37,7 +37,18 @@ std::vector<std::filesystem::path> dataDirectories() {
 }
 
 bool usesNativeWindowChrome() {
-#if defined(_WIN32) || defined(__APPLE__)
+    // Linux and Windows draw the Win11-style title row themselves (GTK4's
+    // usual client-side decorations, with Aero Snap emulated on Windows).
+    // macOS keeps its native title bar and traffic-light buttons.
+#if defined(__APPLE__)
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool usesCrlfByDefault() {
+#if defined(_WIN32)
     return true;
 #else
     return false;

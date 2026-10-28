@@ -1,56 +1,24 @@
 #include "plumas/ui/Resources.hpp"
 
 #include "plumas/core/FileIO.hpp"
+#include "plumas/platform/Paths.hpp"
 
 #include <gio/gio.h>
 
-#include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace plumas::ui {
 
 namespace {
 
-constexpr const char kResourceBase[] = "/com/plumas/EditorTexto/";
+constexpr const char kResourceBase[] = "/com/plumatext/PlumaText/";
 
 bool fileExists(const std::filesystem::path& path) {
     std::error_code error;
     return std::filesystem::exists(path, error) && !error;
-}
-
-std::vector<std::filesystem::path> dataSearchDirectories() {
-    std::vector<std::filesystem::path> directories;
-
-#ifdef PLUMAS_INSTALL_DATADIR
-    directories.emplace_back(
-        std::filesystem::path(PLUMAS_INSTALL_DATADIR) / "plumas-text-editor");
-#endif
-
-    if (const char* dataDirs = std::getenv("XDG_DATA_DIRS"); dataDirs != nullptr) {
-        std::string_view remaining(dataDirs);
-        while (!remaining.empty()) {
-            const std::size_t separator = remaining.find(':');
-            const std::string_view entry =
-                separator == std::string_view::npos ? remaining : remaining.substr(0, separator);
-            if (!entry.empty()) {
-                directories.emplace_back(std::filesystem::path(entry) / "plumas-text-editor");
-            }
-            if (separator == std::string_view::npos) {
-                break;
-            }
-            remaining = remaining.substr(separator + 1);
-        }
-    }
-
-    if (const char* home = std::getenv("HOME"); home != nullptr) {
-        directories.emplace_back(
-            std::filesystem::path(home) / ".local" / "share" / "plumas-text-editor");
-    }
-
-    return directories;
 }
 
 } // namespace
@@ -71,32 +39,28 @@ bool isBundledResourceWithinSize(const char* fileName, const std::size_t maxByte
     return data != nullptr && g_bytes_get_size(data) <= maxBytes;
 }
 
-bool isSafeFilesystemImagePath(const char* fileName, const std::size_t maxBytes) {
-    const std::optional<std::string> path = findFilesystemResourcePath(fileName);
-    if (!path.has_value()) {
-        return false;
+std::optional<std::string> findSafeFilesystemImagePath(
+    const char* fileName,
+    const std::size_t maxBytes) {
+    std::optional<std::string> path = findFilesystemResourcePath(fileName);
+    if (!path.has_value() || !core::isSafeRegularFileSize(core::pathFromUtf8(*path), maxBytes)) {
+        return std::nullopt;
     }
-
-    return core::isSafeRegularFileSize(*path, maxBytes);
+    return path;
 }
 
 std::optional<std::string> findFilesystemResourcePath(const char* fileName) {
-    for (const std::filesystem::path& directory : dataSearchDirectories()) {
+    for (const std::filesystem::path& directory : platform::dataDirectories()) {
         const std::filesystem::path candidate = directory / fileName;
         if (fileExists(candidate)) {
-            return candidate.string();
+            return core::pathToUtf8(candidate);
         }
     }
 
-    std::error_code error;
-    const std::filesystem::path executablePath =
-        std::filesystem::read_symlink("/proc/self/exe", error);
-    if (!error) {
-        const std::filesystem::path candidate =
-            executablePath.parent_path() / "resources" / fileName;
-        if (fileExists(candidate)) {
-            return candidate.string();
-        }
+    const std::filesystem::path candidate =
+        platform::executableDirectory() / "resources" / fileName;
+    if (fileExists(candidate)) {
+        return core::pathToUtf8(candidate);
     }
 
     return std::nullopt;

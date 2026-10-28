@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 3.20)
-project(plumas-text-editor VERSION 0.1.0 LANGUAGES CXX)
+project(pluma-text VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# _FORTIFY_SOURCE does nothing without optimization, so never build unoptimized
+# by accident.
+get_property(PLUMAS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT PLUMAS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
 include(GNUInstallDirs)
 
@@ -31,10 +38,37 @@ set(PLUMAS_COMPILE_FLAGS
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    list(APPEND PLUMAS_COMPILE_FLAGS -fPIE)
+    list(APPEND PLUMAS_COMPILE_FLAGS
+        -fPIE
+        -fstack-clash-protection
+        # Bounds checks in std::string/vector operator[]; negligible cost here.
+        -D_GLIBCXX_ASSERTIONS
+        # Some toolchains predefine level 3; -U avoids a redefinition clash.
+        $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:-U_FORTIFY_SOURCE>
+        $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:-D_FORTIFY_SOURCE=3>
+    )
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")
+        list(APPEND PLUMAS_COMPILE_FLAGS -fcf-protection=full)
+    endif()
+endif()
+
+set(PLUMAS_LINK_FLAGS "")
+if(NOT WIN32 AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    list(APPEND PLUMAS_LINK_FLAGS -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
 endif()
 
 set(PLUMAS_SANITIZER_FLAGS "")
+
+# libFuzzer targets in tests/fuzz (Clang only). Every target is built with
+# coverage instrumentation so the fuzzer can see into plumas_core.
+option(PLUMAS_BUILD_FUZZERS "Build the libFuzzer targets (requires Clang)" OFF)
+if(PLUMAS_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "PLUMAS_BUILD_FUZZERS requires Clang (CXX=clang++).")
+    endif()
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined)
+endif()
 
 option(PLUMAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 if(PLUMAS_ENABLE_SANITIZERS)
@@ -53,7 +87,6 @@ add_library(plumas_core
 target_include_directories(plumas_core PUBLIC include)
 target_link_libraries(plumas_core PUBLIC nlohmann_json::nlohmann_json)
 target_compile_options(plumas_core PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
-target_compile_definitions(plumas_core PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 if(PLUMAS_SANITIZER_FLAGS)
     target_link_options(plumas_core PUBLIC ${PLUMAS_SANITIZER_FLAGS})
 endif()
@@ -71,6 +104,8 @@ add_custom_command(
     DEPENDS
         ${PLUMAS_GRESOURCE_XML}
         ${CMAKE_SOURCE_DIR}/src/ui/styles.css
+        ${CMAKE_SOURCE_DIR}/src/ui/styles-dark.css
+        ${CMAKE_SOURCE_DIR}/src/ui/styles-adw-variables.css
         ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp
     COMMENT "Compiling GResource bundle"
 )
@@ -78,120 +113,52 @@ add_custom_command(
 add_library(plumas_ui
     src/ui/Application.cpp
     src/ui/MainWindow.cpp
+    src/ui/MenuBar.cpp
     src/ui/EditorView.cpp
     src/ui/TitleBar.cpp
     src/ui/Dialogs.cpp
     src/ui/SearchReplace.cpp
+    src/ui/Tabs.cpp
     src/ui/UiHelpers.cpp
     src/ui/Resources.cpp
-    ${PLUMAS_GRESOURCE_C}
 )
 target_include_directories(plumas_ui PUBLIC include)
 target_link_libraries(plumas_ui PUBLIC plumas_core PkgConfig::GTK4 PkgConfig::ADW PkgConfig::GIO)
 target_compile_options(plumas_ui PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_compile_definitions(plumas_ui PRIVATE
-    $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>
     PLUMAS_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}"
 )
 
-add_executable(plumas-text-editor src/main.cpp)
-target_link_libraries(plumas-text-editor PRIVATE plumas_ui)
-target_compile_options(plumas-text-editor PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
-target_compile_definitions(plumas-text-editor PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+# The generated GResource registers itself from a constructor; linking it
+# directly into the executable keeps the linker from dropping it.
+add_executable(pluma-text src/main.cpp ${PLUMAS_GRESOURCE_C})
+target_link_libraries(pluma-text PRIVATE plumas_ui)
+target_link_options(pluma-text PRIVATE ${PLUMAS_LINK_FLAGS})
+target_compile_options(pluma-text PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${PLUMAS_COMPILE_FLAGS}>
+    ${PLUMAS_SANITIZER_FLAGS})
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_options(plumas-text-editor PRIVATE -Wl,-z,relro -Wl,-z,now -pie ${PLUMAS_SANITIZER_FLAGS})
+if(WIN32)
+    include(${CMAKE_SOURCE_DIR}/cmake/platforms/Windows.cmake)
+elseif(APPLE)
+    include(${CMAKE_SOURCE_DIR}/cmake/platforms/Darwin.cmake)
+else()
+    include(${CMAKE_SOURCE_DIR}/cmake/platforms/Linux.cmake)
 endif()
 
-configure_file(
-    ${CMAKE_SOURCE_DIR}/packaging/debian/plumas-text-editor.desktop.in
-    ${CMAKE_CURRENT_BINARY_DIR}/plumas-text-editor.desktop
-    @ONLY
-)
-configure_file(
-    ${CMAKE_SOURCE_DIR}/packaging/debian/com.plumas.EditorTexto.metainfo.xml.in
-    ${CMAKE_CURRENT_BINARY_DIR}/com.plumas.EditorTexto.metainfo.xml
-    @ONLY
-)
-
-set(PLUMAS_ICON_SOURCE ${CMAKE_SOURCE_DIR}/plumas.png)
-set(PLUMAS_ICON_FALLBACK ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp)
-set(PLUMAS_ICON_NAME plumas-text-editor)
-set(PLUMAS_ICON_SIZES 16 24 32 48 64 128 256 512)
-
-if(EXISTS "${PLUMAS_ICON_SOURCE}")
-    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_SOURCE}")
-elseif(EXISTS "${PLUMAS_ICON_FALLBACK}")
-    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_FALLBACK}")
-    message(STATUS "plumas.png not found; using ${PLUMAS_ICON_FALLBACK} for hicolor icons")
+option(PLUMAS_BUILD_TESTS "Build the core unit tests" ON)
+if(PLUMAS_BUILD_TESTS)
+    enable_testing()
+    add_executable(plumas_core_tests tests/core_tests.cpp)
+    target_link_libraries(plumas_core_tests PRIVATE plumas_core)
+    target_compile_options(plumas_core_tests PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
+    add_test(NAME plumas_core_tests COMMAND plumas_core_tests)
 endif()
 
-if(DEFINED PLUMAS_ICON_INPUT)
-    find_program(PLUMAS_MAGICK_COMMAND NAMES magick convert)
-
-    foreach(size IN LISTS PLUMAS_ICON_SIZES)
-        set(icon_output
-            ${CMAKE_CURRENT_BINARY_DIR}/generated/icons/${size}x${size}/apps/${PLUMAS_ICON_NAME}.png)
-        add_custom_command(
-            OUTPUT ${icon_output}
-            COMMAND ${CMAKE_COMMAND}
-                -Dicon_source=${PLUMAS_ICON_INPUT}
-                -Dsize=${size}
-                -Doutput_path=${icon_output}
-                -DPLUMAS_MAGICK_COMMAND=${PLUMAS_MAGICK_COMMAND}
-                -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
-                -P ${CMAKE_SOURCE_DIR}/cmake/GenerateAppIcons.cmake
-            DEPENDS ${PLUMAS_ICON_INPUT}
-            COMMENT "Generating ${size}x${size} application icon"
-        )
-        list(APPEND PLUMAS_GENERATED_ICONS ${icon_output})
-    endforeach()
-
-    add_custom_target(plumas_icons DEPENDS ${PLUMAS_GENERATED_ICONS})
-endif()
-
-install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/plumas-text-editor.desktop
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
-)
-
-install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/com.plumas.EditorTexto.metainfo.xml
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
-)
-
-install(
-    FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/plumas-text-editor
-)
-
-if(TARGET plumas_icons)
-    install(CODE "
-        execute_process(
-            COMMAND \"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" --target plumas_icons
-            RESULT_VARIABLE _plumas_icon_build_result
-        )
-        if(NOT _plumas_icon_build_result EQUAL 0)
-            message(FATAL_ERROR \"Failed to generate application icons\")
-        endif()
-    ")
-    foreach(size IN LISTS PLUMAS_ICON_SIZES)
-        install(
-            FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/icons/${size}x${size}/apps/${PLUMAS_ICON_NAME}.png
-            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
-        )
+if(PLUMAS_BUILD_FUZZERS)
+    foreach(fuzzer fuzz_text fuzz_config)
+        add_executable(${fuzzer} tests/fuzz/${fuzzer}.cpp)
+        target_link_libraries(${fuzzer} PRIVATE plumas_core PkgConfig::GIO)
+        target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer)
     endforeach()
 endif()
-
-include(CPack)
-set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_CONTACT "${PLUMAS_DEVELOPER}")
-set(CPACK_PACKAGE_HOMEPAGE_URL "${PLUMAS_HOMEPAGE}")
-set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE)
-set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_SECTION "editors")
-set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)

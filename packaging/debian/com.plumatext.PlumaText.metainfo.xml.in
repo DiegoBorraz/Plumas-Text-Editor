@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.plumatext.PlumaText</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Pluma-Text</name>
+  <summary>@PLUMAS_SUMMARY@</summary>
+  <description>
+    <p>Pluma-Text — lighter than Windows Notepad.</p>
+    <p>A tabbed text editor with a GTK4 interface, line numbers, and support for common text file formats.</p>
+  </description>
+  <launchable type="desktop-id">com.plumatext.PlumaText.desktop</launchable>
+  <url type="homepage">@PLUMAS_HOMEPAGE@</url>
+  <developer id="com.plumatext">
+    <name>@PLUMAS_DEVELOPER@</name>
+  </developer>
+  <project_license>LicenseRef-Pluma-Text-Free-Non-Commercial-1.0</project_license>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace plumas::core {
 
@@ -22,6 +23,18 @@ enum class FileIoError {
     PermissionDenied,
     IoError,
 };
+
+enum class FilePermissions {
+    // Keep the mode of the file being replaced; new files follow the umask.
+    PreserveOrDefault,
+    // Readable and writable by the owner only (config files).
+    OwnerOnly,
+};
+
+inline bool isValidPathString(const std::string_view path) {
+    return !path.empty() && path.size() <= kMaxPathLength
+        && path.find('\0') == std::string_view::npos;
+}
 
 struct FileReadResult {
     std::string content;

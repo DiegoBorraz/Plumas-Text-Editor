@@ -14,21 +14,26 @@ add_library(plumas_platform ${PLUMAS_PLATFORM_SOURCES})
 target_include_directories(plumas_platform PUBLIC include)
 target_compile_options(plumas_platform PRIVATE ${PLUMAS_COMPILE_FLAGS} ${PLUMAS_SANITIZER_FLAGS})
 target_link_libraries(plumas_platform PUBLIC shell32)
+# windows.h would otherwise define min()/max() macros that break std::min/max.
+target_compile_definitions(plumas_platform PRIVATE NOMINMAX)
+if(MINGW)
+    # MinGW keeps __stack_chk_fail and the _FORTIFY_SOURCE helpers in libssp,
+    # which GCC links only when the stack protector flag reaches the linker.
+    target_link_options(plumas_platform PUBLIC -fstack-protector-strong)
+endif()
 plumas_configure_platform_target(plumas_platform)
 
 target_link_libraries(plumas_core PUBLIC plumas_platform)
 
-set(PLUMAS_ICON_SOURCE ${CMAKE_SOURCE_DIR}/plumas.png)
-set(PLUMAS_ICON_FALLBACK ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp)
+set_target_properties(pluma-text PROPERTIES WIN32_EXECUTABLE TRUE)
 
-if(EXISTS "${PLUMAS_ICON_SOURCE}")
-    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_SOURCE}")
-elseif(EXISTS "${PLUMAS_ICON_FALLBACK}")
-    set(PLUMAS_ICON_INPUT "${PLUMAS_ICON_FALLBACK}")
-endif()
+# Embeds resources/pluma-text.ico, the icon Explorer, the taskbar and the
+# Start menu show for pluma-text.exe.
+enable_language(RC)
+target_sources(pluma-text PRIVATE ${CMAKE_SOURCE_DIR}/resources/pluma-text.rc)
 
-install(TARGETS plumas-text-editor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS pluma-text RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(
     FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE
-    DESTINATION share/plumas-text-editor
+    DESTINATION share/pluma-text
 )

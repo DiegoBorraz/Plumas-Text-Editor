@@ -1,122 +1,19 @@
 #include "plumas/core/FileIO.hpp"
 
-#include <cerrno>
-#include <cstring>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#include <unordered_set>
-#include <vector>
+#include "plumas/platform/FileBackend.hpp"
 
 #include <algorithm>
 #include <cctype>
 
 namespace plumas::core {
 
-namespace {
-
-FileIoError errorFromErrno() {
-    switch (errno) {
-    case EACCES:
-    case EPERM:
-        return FileIoError::PermissionDenied;
-    case ENOENT:
-        return FileIoError::NotFound;
-    case ELOOP:
-        return FileIoError::Symlink;
-    default:
-        return FileIoError::IoError;
-    }
+std::filesystem::path pathFromUtf8(const std::string_view utf8) {
+    return std::filesystem::path(std::u8string(utf8.begin(), utf8.end()));
 }
 
-bool isRegularFileDescriptor(int fd) {
-    struct stat status {};
-    if (::fstat(fd, &status) != 0) {
-        return false;
-    }
-    return S_ISREG(status.st_mode);
-}
-
-std::optional<std::string> readLimited(int fd, const std::size_t maxBytes) {
-    std::string content;
-    content.reserve(4096);
-
-    char buffer[8192];
-    while (content.size() <= maxBytes) {
-        const ssize_t bytesRead = ::read(fd, buffer, sizeof(buffer));
-        if (bytesRead < 0) {
-            return std::nullopt;
-        }
-        if (bytesRead == 0) {
-            return content;
-        }
-
-        const std::size_t newSize = content.size() + static_cast<std::size_t>(bytesRead);
-        if (newSize > maxBytes) {
-            return std::nullopt;
-        }
-
-        content.append(buffer, static_cast<std::size_t>(bytesRead));
-    }
-
-    return std::nullopt;
-}
-
-FileReadResult readRegularTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
-    FileReadResult result;
-
-    if (!isValidPathString(path.string())) {
-        result.error = FileIoError::InvalidPath;
-        return result;
-    }
-
-    std::error_code error;
-    if (std::filesystem::is_symlink(path, error)) {
-        result.error = FileIoError::Symlink;
-        return result;
-    }
-
-    if (std::filesystem::is_directory(path, error)) {
-        result.error = FileIoError::NotRegularFile;
-        return result;
-    }
-
-    const int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-    if (fd < 0) {
-        result.error = errorFromErrno();
-        return result;
-    }
-
-    if (!isRegularFileDescriptor(fd)) {
-        ::close(fd);
-        result.error = FileIoError::NotRegularFile;
-        return result;
-    }
-
-    const std::optional<std::string> content = readLimited(fd, maxBytes);
-    ::close(fd);
-
-    if (!content.has_value()) {
-        result.error = FileIoError::TooLarge;
-        return result;
-    }
-
-    result.content = *content;
-    result.error = FileIoError::None;
-    return result;
-}
-
-} // namespace
-
-bool isValidPathString(const std::string& path) {
-    if (path.empty() || path.size() > kMaxPathLength) {
-        return false;
-    }
-    if (path.find('\0') != std::string::npos) {
-        return false;
-    }
-    return true;
+std::string pathToUtf8(const std::filesystem::path& path) {
+    const std::u8string utf8 = path.u8string();
+    return std::string(utf8.begin(), utf8.end());
 }
 
 std::optional<std::filesystem::path> normalizePath(const std::string& path) {
@@ -124,9 +21,13 @@ std::optional<std::filesystem::path> normalizePath(const std::string& path) {
         return std::nullopt;
     }
 
-    const std::filesystem::path input(path);
+    // Symlinks are resolved on purpose: editing a link edits its target, as in
+    // other editors, and the link itself survives the atomic save. The backend
+    // still refuses a final-component symlink, so a link swapped in after this
+    // point makes the read or write fail instead of being followed.
+    const std::filesystem::path input = pathFromUtf8(path);
     std::error_code error;
-    const std::filesystem::path normalized = std::filesystem::weakly_canonical(input, error);
+    std::filesystem::path normalized = std::filesystem::weakly_canonical(input, error);
     if (!error) {
         return normalized;
     }
@@ -203,15 +104,8 @@ const std::vector<std::string>& allowedTextFileExtensionNames() {
 
 namespace {
 
-const std::unordered_set<std::string>& allowedTextFileExtensionSet() {
-    static const std::unordered_set<std::string> extensions(
-        allowedTextFileExtensionNames().begin(),
-        allowedTextFileExtensionNames().end());
-    return extensions;
-}
-
 std::string extensionNameLowercase(const std::filesystem::path& path) {
-    const std::string extension = path.extension().string();
+    const std::string extension = pathToUtf8(path.extension());
     if (extension.size() < 2 || extension[0] != '.') {
         return {};
     }
@@ -235,173 +129,139 @@ bool isAllowedTextFilePath(const std::filesystem::path& path) {
         return false;
     }
 
-    return allowedTextFileExtensionSet().contains(extensionName);
+    const std::vector<std::string>& allowed = allowedTextFileExtensionNames();
+    return std::find(allowed.begin(), allowed.end(), extensionName) != allowed.end();
 }
 
-bool isSafeRecentFilePath(const std::filesystem::path& path) {
-    if (!isValidPathString(path.string())) {
-        return false;
-    }
+bool isValidUtf8Text(const std::string_view text) {
+    const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());
+    const std::size_t size = text.size();
+    std::size_t index = 0;
 
-    if (!path.is_absolute()) {
-        return false;
-    }
+    while (index < size) {
+        const unsigned char lead = bytes[index];
+        if (lead == 0) {
+            return false;
+        }
+        if (lead < 0x80) {
+            ++index;
+            continue;
+        }
 
-    std::error_code error;
-    if (std::filesystem::is_symlink(path, error)) {
-        return false;
-    }
+        std::size_t length = 0;
+        unsigned char minSecond = 0x80;
+        unsigned char maxSecond = 0xBF;
+        if (lead >= 0xC2 && lead <= 0xDF) {
+            length = 2;
+        } else if (lead >= 0xE0 && lead <= 0xEF) {
+            length = 3;
+            if (lead == 0xE0) {
+                minSecond = 0xA0; // overlong
+            } else if (lead == 0xED) {
+                maxSecond = 0x9F; // UTF-16 surrogates
+            }
+        } else if (lead >= 0xF0 && lead <= 0xF4) {
+            length = 4;
+            if (lead == 0xF0) {
+                minSecond = 0x90; // overlong
+            } else if (lead == 0xF4) {
+                maxSecond = 0x8F; // above U+10FFFF
+            }
+        } else {
+            return false;
+        }
 
+        if (size - index < length || bytes[index + 1] < minSecond || bytes[index + 1] > maxSecond) {
+            return false;
+        }
+        for (std::size_t offset = 2; offset < length; ++offset) {
+            if ((bytes[index + offset] & 0xC0) != 0x80) {
+                return false;
+            }
+        }
+        index += length;
+    }
     return true;
 }
 
-bool fileExistsForOverwrite(const std::filesystem::path& path) {
-    std::error_code error;
-    return std::filesystem::exists(path, error) && !error;
+bool usesCrlfLineEndings(const std::string_view text) {
+    const std::size_t newline = text.find('\n');
+    return newline != std::string_view::npos && newline > 0 && text[newline - 1] == '\r';
 }
 
-FileReadResult readTextFile(const std::filesystem::path& path) {
-    return readRegularTextFile(path, kMaxFileSizeBytes);
-}
-
-FileReadResult readSmallTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
-    return readRegularTextFile(path, maxBytes);
+FileReadResult readTextFile(const std::filesystem::path& path, const std::size_t maxBytes) {
+    return platform::readRegularTextFile(path, maxBytes);
 }
 
 bool isSafeRegularFileSize(const std::filesystem::path& path, const std::size_t maxBytes) {
-    if (!isValidPathString(path.string())) {
-        return false;
-    }
-
-    std::error_code error;
-    if (std::filesystem::is_symlink(path, error)) {
-        return false;
-    }
-
-    const int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-    if (fd < 0) {
-        return false;
-    }
-
-    if (!isRegularFileDescriptor(fd)) {
-        ::close(fd);
-        return false;
-    }
-
-    struct stat status {};
-    const bool withinLimit = ::fstat(fd, &status) == 0
-        && static_cast<std::size_t>(status.st_size) <= maxBytes;
-    ::close(fd);
-    return withinLimit;
+    return platform::isSafeRegularFileSize(path, maxBytes);
 }
 
 TextReplaceResult replaceAllInText(
-    const std::string& text,
-    const std::string& findText,
-    const std::string& replaceText,
+    const std::string_view text,
+    const std::string_view findText,
+    const std::string_view replaceText,
     const std::size_t maxReplacements,
     const std::size_t maxOutputBytes,
     const std::atomic<bool>* cancelFlag) {
     TextReplaceResult result;
-    result.text = text;
-
     if (findText.empty()) {
         return result;
     }
 
+    // Builds the output in one pass. Replacing in place would shift the tail of
+    // the string on every match, which is quadratic on large documents.
     std::size_t position = 0;
-    while (position <= result.text.size()) {
-        if (cancelFlag != nullptr && cancelFlag->load()) {
+    while (true) {
+        if (cancelFlag != nullptr && cancelFlag->load(std::memory_order_relaxed)) {
+            result = {};
             result.cancelled = true;
             return result;
         }
 
+        const std::size_t matchPosition = text.find(findText, position);
+        if (matchPosition == std::string_view::npos) {
+            break;
+        }
+
         if (result.replacements >= maxReplacements) {
+            result = {};
             result.limitReached = true;
             return result;
         }
 
-        const std::size_t matchPosition = result.text.find(findText, position);
-        if (matchPosition == std::string::npos) {
-            return result;
+        if (result.replacements == 0) {
+            result.text.reserve(text.size());
         }
-
-        result.text.replace(matchPosition, findText.size(), replaceText);
+        result.text.append(text.substr(position, matchPosition - position));
+        result.text.append(replaceText);
         if (result.text.size() > maxOutputBytes) {
+            result = {};
             result.limitReached = true;
             return result;
         }
 
-        position = matchPosition + replaceText.size();
+        position = matchPosition + findText.size();
         ++result.replacements;
     }
 
+    if (result.replacements == 0) {
+        return result;
+    }
+
+    result.text.append(text.substr(position));
+    if (result.text.size() > maxOutputBytes) {
+        result = {};
+        result.limitReached = true;
+    }
     return result;
 }
 
-bool writeTextFileAtomic(const std::filesystem::path& path, const std::string& content) {
-    if (!isValidPathString(path.string())) {
-        return false;
-    }
-
-    if (std::filesystem::is_symlink(path)) {
-        return false;
-    }
-
-    const std::filesystem::path parent = path.parent_path();
-    if (parent.empty()) {
-        return false;
-    }
-
-    std::error_code error;
-    std::filesystem::create_directories(parent, error);
-
-    std::string tempTemplate = (parent / (path.filename().string() + ".plumas-tmp-XXXXXX")).string();
-    std::vector<char> tempBuffer(tempTemplate.begin(), tempTemplate.end());
-    tempBuffer.push_back('\0');
-
-    const int fd = ::mkstemp(tempBuffer.data());
-    if (fd < 0) {
-        return false;
-    }
-
-    const std::string tempPath(tempBuffer.data());
-
-    ssize_t totalWritten = 0;
-    const char* data = content.data();
-    const ssize_t totalSize = static_cast<ssize_t>(content.size());
-
-    while (totalWritten < totalSize) {
-        const ssize_t written = ::write(fd, data + totalWritten, totalSize - totalWritten);
-        if (written < 0) {
-            ::close(fd);
-            ::unlink(tempPath.c_str());
-            return false;
-        }
-        totalWritten += written;
-    }
-
-    if (::fsync(fd) != 0) {
-        ::close(fd);
-        ::unlink(tempPath.c_str());
-        return false;
-    }
-
-    if (::close(fd) != 0) {
-        ::unlink(tempPath.c_str());
-        return false;
-    }
-
-    if (::rename(tempPath.c_str(), path.c_str()) != 0) {
-        ::unlink(tempPath.c_str());
-        return false;
-    }
-
-    return true;
-}
-
-bool restrictConfigPermissions(const std::filesystem::path& path) {
-    return ::chmod(path.c_str(), S_IRUSR | S_IWUSR) == 0;
+bool writeTextFileAtomic(
+    const std::filesystem::path& path,
+    const std::string_view content,
+    const FilePermissions permissions) {
+    return platform::writeTextFileAtomic(path, content, permissions);
 }
 
 } // namespace plumas::core

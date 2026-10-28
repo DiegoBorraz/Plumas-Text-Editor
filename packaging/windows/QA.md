@@ -1,6 +1,6 @@
 # Checklist de QA manual no Windows
 
-Execute após instalar `PlumasTextEditor-0.1.0-setup.exe`:
+Execute após instalar `PlumaText-0.1.0-setup.exe`:
 
 1. Abrir pelo Menu Iniciar
 2. Criar novo documento e digitar texto
@@ -8,8 +8,8 @@ Execute após instalar `PlumasTextEditor-0.1.0-setup.exe`:
 4. Reabrir arquivo salvo
 5. **Ctrl+F** — busca e substituição
 6. **Replace All** em documento médio — UI responsiva e botão Cancel
-7. Abrir arquivo pela linha de comando: `plumas-text-editor.exe C:\caminho\notas.txt`
+7. Abrir arquivo pela linha de comando: `"C:\Program Files\Pluma-Text\bin\pluma-text.exe" C:\caminho\notas.txt`
 8. Tema escuro/claro (se disponível no sistema)
 9. Desinstalar em "Adicionar ou remover programas"
 
-Config esperada: `%APPDATA%\plumas-text-editor\config.json`
+Config esperada: `%APPDATA%\pluma-text\config.json`

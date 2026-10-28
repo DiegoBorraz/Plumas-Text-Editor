@@ -15,7 +15,7 @@ namespace plumas::platform {
 
 namespace {
 
-constexpr const char kAppConfigDirName[] = "plumas-text-editor";
+constexpr const char kAppConfigDirName[] = "pluma-text";
 
 bool isValidEnvPath(const char* value) {
     if (value == nullptr) {
@@ -23,6 +23,11 @@ bool isValidEnvPath(const char* value) {
     }
     const std::string_view path(value);
     return !path.empty() && path.size() <= core::kMaxPathLength && path.find('\0') == std::string_view::npos;
+}
+
+// A relative entry would resolve against the working directory.
+bool isAbsoluteEnvPath(const std::string_view value) {
+    return value.size() <= core::kMaxPathLength && !value.empty() && value.front() == '/';
 }
 
 } // namespace
@@ -34,12 +39,14 @@ std::filesystem::path configDirectoryPosix() {
     }
     return std::filesystem::path("Library") / "Application Support" / kAppConfigDirName;
 #else
+    // The XDG spec says relative values must be ignored; they would resolve
+    // against the working directory.
     if (const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
-        xdgConfigHome != nullptr && isValidEnvPath(xdgConfigHome)) {
+        isValidEnvPath(xdgConfigHome) && isAbsoluteEnvPath(xdgConfigHome)) {
         return std::filesystem::path(xdgConfigHome) / kAppConfigDirName;
     }
 
-    if (const char* home = std::getenv("HOME"); home != nullptr && isValidEnvPath(home)) {
+    if (const char* home = std::getenv("HOME"); isValidEnvPath(home) && isAbsoluteEnvPath(home)) {
         return std::filesystem::path(home) / ".config" / kAppConfigDirName;
     }
 
@@ -81,7 +88,7 @@ std::vector<std::filesystem::path> dataDirectoriesPosix() {
             const std::size_t separator = remaining.find(':');
             const std::string_view entry =
                 separator == std::string_view::npos ? remaining : remaining.substr(0, separator);
-            if (!entry.empty()) {
+            if (isAbsoluteEnvPath(entry)) {
                 directories.emplace_back(std::filesystem::path(entry) / kAppConfigDirName);
             }
             if (separator == std::string_view::npos) {
@@ -92,7 +99,7 @@ std::vector<std::filesystem::path> dataDirectoriesPosix() {
     }
 #endif
 
-    if (const char* home = std::getenv("HOME"); home != nullptr) {
+    if (const char* home = std::getenv("HOME"); isValidEnvPath(home) && isAbsoluteEnvPath(home)) {
 #if defined(__APPLE__)
         directories.emplace_back(
             std::filesystem::path(home) / "Library" / "Application Support" / kAppConfigDirName);

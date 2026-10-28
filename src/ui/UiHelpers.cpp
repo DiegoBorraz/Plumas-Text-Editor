@@ -1,11 +1,14 @@
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/Document.hpp"
+#include "plumas/ui/Tabs.hpp"
+#include "plumas/core/FileIO.hpp"
 
 #include <adwaita.h>
 #include <pango/pango.h>
 
 #include <algorithm>
+#include <string>
 
 namespace plumas::ui {
 
@@ -56,18 +59,39 @@ void showToast(AppState* state, const char* message) {
 }
 
 void updateStatus(AppState* state) {
-    const std::string& path = state->document->filePath();
-
-    std::string pathText;
-    if (path.empty()) {
-        pathText = "(new document)";
-    } else {
-        pathText = path;
+    EditorTab* tab = state->activeTab;
+    if (tab == nullptr) {
+        return;
     }
 
-    gtk_label_set_text(GTK_LABEL(state->pathLabel), pathText.c_str());
-    gtk_window_set_title(state->window, kWindowTitle);
-    gtk_widget_set_sensitive(state->saveButton, isSaveAvailable(*state->document));
+    const core::Document& document = *tab->document;
+    const std::string name = document.filePath().empty()
+        ? std::string(kUntitledName)
+        : core::pathToUtf8(core::pathFromUtf8(document.filePath()).filename());
+    const std::string windowTitle =
+        (document.isDirty() ? "*" : "") + name + " - " + kAppShortName;
+    gtk_window_set_title(state->window, windowTitle.c_str());
+    updateTabLabel(tab);
+
+    if (state->positionLabel == nullptr) {
+        return;
+    }
+
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
+    GtkTextIter cursor;
+    gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+    const int characters = gtk_text_buffer_get_char_count(buffer);
+
+    const std::string position = "Ln " + std::to_string(gtk_text_iter_get_line(&cursor) + 1)
+        + ", Col " + std::to_string(gtk_text_iter_get_line_offset(&cursor) + 1) + "    "
+        + std::to_string(characters) + (characters == 1 ? " character" : " characters");
+    gtk_label_set_text(GTK_LABEL(state->positionLabel), position.c_str());
+
+    const std::string zoom = std::to_string(state->zoomPercent) + "%";
+    gtk_label_set_text(GTK_LABEL(state->zoomLabel), zoom.c_str());
+    gtk_label_set_text(
+        GTK_LABEL(state->lineEndingLabel),
+        tab->usesCrlf ? "Windows (CRLF)" : "Unix (LF)");
 }
 
 void setLabelStyle(GtkLabel* label, const int fontSizePt, const bool bold) {

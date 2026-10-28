@@ -6,85 +6,93 @@
 #include <pango/pangocairo.h>
 
 #include <algorithm>
-#include <cstring>
 #include <string>
+#include <string_view>
+
+// A GtkTextView that paints the cursor's line underneath the text. Painting
+// in snapshot_layer() keeps the highlight out of the buffer; a text tag would
+// travel with copied text.
+struct PlumaTextView {
+    GtkTextView parentInstance;
+    GdkRGBA currentLineColor;
+};
+
+struct PlumaTextViewClass {
+    GtkTextViewClass parentClass;
+};
+
+G_DEFINE_TYPE(PlumaTextView, pluma_text_view, GTK_TYPE_TEXT_VIEW)
+
+namespace {
+
+void plumaTextViewSnapshotLayer(
+    GtkTextView* view,
+    const GtkTextViewLayer layer,
+    GtkSnapshot* snapshot) {
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(view);
+    // With a selection, the selection colour already shows where the cursor is.
+    if (layer == GTK_TEXT_VIEW_LAYER_BELOW_TEXT && !gtk_text_buffer_get_has_selection(buffer)) {
+        GtkTextIter cursor;
+        gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+        int lineY = 0;
+        int lineHeight = 0;
+        gtk_text_view_get_line_yrange(view, &cursor, &lineY, &lineHeight);
+        GdkRectangle visible;
+        gtk_text_view_get_visible_rect(view, &visible);
+
+        // Layers are drawn in buffer coordinates, like the two values above.
+        const graphene_rect_t line = GRAPHENE_RECT_INIT(
+            static_cast<float>(visible.x),
+            static_cast<float>(lineY),
+            static_cast<float>(visible.width),
+            static_cast<float>(lineHeight));
+        gtk_snapshot_append_color(
+            snapshot, &reinterpret_cast<PlumaTextView*>(view)->currentLineColor, &line);
+    }
+
+    const auto snapshotParent = GTK_TEXT_VIEW_CLASS(pluma_text_view_parent_class)->snapshot_layer;
+    if (snapshotParent != nullptr) {
+        snapshotParent(view, layer, snapshot);
+    }
+}
+
+} // namespace
+
+static void pluma_text_view_class_init(PlumaTextViewClass* klass) {
+    GTK_TEXT_VIEW_CLASS(klass)->snapshot_layer = plumaTextViewSnapshotLayer;
+}
+
+static void pluma_text_view_init(PlumaTextView* view) {
+    view->currentLineColor = GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
+}
 
 namespace plumas::ui {
 
 namespace {
 
-constexpr const char kLineGutterBackground[] = "#ededf2";
-constexpr const char kLineNumberColor[] = "#17a6a8";
-constexpr const char kEditorBackground[] = "#ffffff";
+constexpr int kLineGutterPaddingTop = 4;
+constexpr int kLineGutterPaddingLeft = 12;
+constexpr int kLineGutterPaddingRight = 8;
+constexpr std::size_t kMinLineNumberDigits = 2;
+constexpr int kEditorPadding = 4;
+constexpr guint kMaxUndoLevels = 100;
+// Notepad's default editor font size, in tenths of a point.
+constexpr int kBaseFontSizeTenthsPt = 110;
+constexpr int kMinZoomPercent = 10;
+constexpr int kMaxZoomPercent = 500;
+constexpr int kScrollZoomStepPercent = 10;
 
-constexpr double kLineGutterBorderRadius = 6.0;
-constexpr double kEditorBorderRadius = 6.0;
+// The two colours the editor paints itself; everything else is in styles.css
+// and styles-dark.css ("Pena" palette).
+struct EditorColors {
+    const char* currentLine;
+    const char* currentLineNumber;
+};
+constexpr EditorColors kLightEditorColors = {"#FBF4F8", "#B4237A"};
+constexpr EditorColors kDarkEditorColors = {"#2E2C34", "#F06AB0"};
 
-constexpr int kLineGutterPaddingTop = 8;
-constexpr int kLineGutterPaddingRight = 3;
-constexpr int kEditorPadding = 8;
-
-GtkCssProvider* gEditorLayerProvider = nullptr;
-
-void ensureEditorLayerProvider() {
-    if (gEditorLayerProvider != nullptr) {
-        return;
-    }
-
-    gEditorLayerProvider = gtk_css_provider_new();
-    gtk_css_provider_load_from_string(
-        gEditorLayerProvider,
-        ".editor-layer { background-color: transparent; min-height: 0; }");
-}
-
-void applyEditorLayerStyle(GtkWidget* widget) {
-    ensureEditorLayerProvider();
-    gtk_widget_add_css_class(widget, "editor-layer");
-    gtk_style_context_add_provider(
-        gtk_widget_get_style_context(widget),
-        GTK_STYLE_PROVIDER(gEditorLayerProvider),
-        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-}
-
-void paintLineGutterBackground(cairo_t* cr, const double width, const double height) {
-    GdkRGBA backgroundColor;
-    gdk_rgba_parse(&backgroundColor, kLineGutterBackground);
-
-    const double radius =
-        std::min(kLineGutterBorderRadius, std::min(width / 2.0, height / 2.0));
-
-    cairo_new_path(cr);
-    cairo_move_to(cr, radius, 0.0);
-    cairo_line_to(cr, width, 0.0);
-    cairo_line_to(cr, width, height);
-    cairo_line_to(cr, radius, height);
-    cairo_arc(cr, radius, height - radius, radius, M_PI_2, M_PI);
-    cairo_line_to(cr, 0.0, radius);
-    cairo_arc(cr, radius, radius, radius, M_PI, 3.0 * M_PI_2);
-    cairo_close_path(cr);
-
-    gdk_cairo_set_source_rgba(cr, &backgroundColor);
-    cairo_fill(cr);
-}
-
-void paintEditorBackground(cairo_t* cr, const double width, const double height) {
-    GdkRGBA backgroundColor;
-    gdk_rgba_parse(&backgroundColor, kEditorBackground);
-
-    const double radius =
-        std::min(kEditorBorderRadius, std::min(width / 2.0, height / 2.0));
-
-    cairo_new_path(cr);
-    cairo_move_to(cr, 0.0, 0.0);
-    cairo_line_to(cr, width - radius, 0.0);
-    cairo_arc(cr, width - radius, radius, radius, 3.0 * M_PI_2, 0.0);
-    cairo_line_to(cr, width, height - radius);
-    cairo_arc(cr, width - radius, height - radius, radius, 0.0, M_PI_2);
-    cairo_line_to(cr, 0.0, height);
-    cairo_close_path(cr);
-
-    gdk_cairo_set_source_rgba(cr, &backgroundColor);
-    cairo_fill(cr);
+const EditorColors& editorColors(const AppState* state) {
+    return state->darkTheme ? kDarkEditorColors : kLightEditorColors;
 }
 
 void queueLineGutterRedraw(AppState* state) {
@@ -93,8 +101,28 @@ void queueLineGutterRedraw(AppState* state) {
     }
 }
 
+// Sizes the gutter for the widest line number in the current font, so it
+// follows both the line count and the zoom. Resizing queues one more frame.
+void fitLineGutterWidth(AppState* state, PangoLayout* layout) {
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
+    const std::size_t digits = std::max<std::size_t>(
+        kMinLineNumberDigits,
+        std::to_string(gtk_text_buffer_get_line_count(buffer)).size());
+
+    pango_layout_set_text(layout, std::string(digits, '0').c_str(), -1);
+    int textWidth = 0;
+    pango_layout_get_pixel_size(layout, &textWidth, nullptr);
+    const int wanted = textWidth + kLineGutterPaddingLeft + kLineGutterPaddingRight;
+
+    int current = 0;
+    gtk_widget_get_size_request(state->lineGutter, &current, nullptr);
+    if (current != wanted) {
+        gtk_widget_set_size_request(state->lineGutter, wanted, -1);
+    }
+}
+
 void drawLineNumbers(
-    GtkDrawingArea* /*area*/,
+    GtkDrawingArea* area,
     cairo_t* cr,
     const int width,
     const int height,
@@ -104,22 +132,40 @@ void drawLineNumbers(
         return;
     }
 
-    paintLineGutterBackground(cr, width, height);
-
     GtkTextView* textView = GTK_TEXT_VIEW(state->textView);
     GtkAdjustment* adjustment =
         gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll));
     const double scrollY = gtk_adjustment_get_value(adjustment);
 
+    // The gutter's colour comes from styles.css like every other widget.
     GdkRGBA lineNumberColor;
-    gdk_rgba_parse(&lineNumberColor, kLineNumberColor);
+    gtk_widget_get_color(GTK_WIDGET(area), &lineNumberColor);
     gdk_cairo_set_source_rgba(cr, &lineNumberColor);
 
     PangoLayout* layout = pango_cairo_create_layout(cr);
+    // Subpixel antialiasing tints thin grey digits orange and blue.
+    cairo_font_options_t* fontOptions = cairo_font_options_create();
+    cairo_font_options_set_antialias(fontOptions, CAIRO_ANTIALIAS_GRAY);
+    pango_cairo_context_set_font_options(pango_layout_get_context(layout), fontOptions);
+    cairo_font_options_destroy(fontOptions);
+    pango_layout_context_changed(layout);
+
     PangoContext* widgetContext = gtk_widget_get_pango_context(GTK_WIDGET(textView));
-    pango_layout_set_font_description(
-        layout,
-        pango_context_get_font_description(widgetContext));
+    const PangoFontDescription* font = pango_context_get_font_description(widgetContext);
+    pango_layout_set_font_description(layout, font);
+
+    fitLineGutterWidth(state, layout);
+
+    // The cursor's line number is drawn bold in the accent colour.
+    PangoFontDescription* currentFont = pango_font_description_copy(font);
+    pango_font_description_set_weight(currentFont, PANGO_WEIGHT_BOLD);
+    GdkRGBA currentNumberColor;
+    gdk_rgba_parse(&currentNumberColor, editorColors(state).currentLineNumber);
+
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer(textView);
+    GtkTextIter cursor;
+    gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+    const int cursorLine = gtk_text_iter_get_line(&cursor);
 
     int firstLineY = 0;
     GtkTextIter firstIter;
@@ -130,42 +176,38 @@ void drawLineNumbers(
     double y = static_cast<double>(lineY) - scrollY + kLineGutterPaddingTop;
 
     GtkTextIter currentIter = firstIter;
+    // The line holding the end iterator is drawn too: it is the empty last line
+    // after a final newline, or line 1 of an empty document.
     while (y < height) {
-        if (gtk_text_iter_is_end(&currentIter)) {
-            break;
-        }
-
         int lineHeight = 0;
         gtk_text_view_get_line_yrange(textView, &currentIter, nullptr, &lineHeight);
         if (lineHeight <= 0) {
             break;
         }
 
-        const int lineNumber = gtk_text_iter_get_line(&currentIter) + 1;
-        const std::string lineText = std::to_string(lineNumber);
+        const int line = gtk_text_iter_get_line(&currentIter);
+        const bool isCursorLine = line == cursorLine;
+        const std::string lineText = std::to_string(line + 1);
         pango_layout_set_text(layout, lineText.c_str(), -1);
         pango_layout_set_width(layout, (width - kLineGutterPaddingRight) * PANGO_SCALE);
         pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+        pango_layout_set_font_description(layout, isCursorLine ? currentFont : font);
+        gdk_cairo_set_source_rgba(cr, isCursorLine ? &currentNumberColor : &lineNumberColor);
 
         cairo_move_to(cr, 0, y);
         pango_cairo_show_layout(cr, layout);
 
         y += lineHeight;
-        if (!gtk_text_iter_forward_line(&currentIter)) {
+        // forward_line() returns FALSE when it lands on the end iterator, even
+        // if that starts a new, empty last line; stop only once it stays put.
+        if (!gtk_text_iter_forward_line(&currentIter)
+            && gtk_text_iter_get_line(&currentIter) == line) {
             break;
         }
     }
 
+    pango_font_description_free(currentFont);
     g_object_unref(layout);
-}
-
-void drawEditorBackground(
-    GtkDrawingArea* /*area*/,
-    cairo_t* cr,
-    const int width,
-    const int height,
-    gpointer /*userData*/) {
-    paintEditorBackground(cr, width, height);
 }
 
 void onInsertText(
@@ -189,11 +231,11 @@ void onInsertText(
 
 void onTextChanged(GtkTextBuffer* /*buffer*/, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
-    if (state->syncingEditor) {
+    if (state->syncingEditor || state->activeTab == nullptr) {
         return;
     }
 
-    state->document->markDirty();
+    state->activeTab->document->markDirty();
     updateStatus(state);
     queueLineGutterRedraw(state);
 }
@@ -202,122 +244,159 @@ void onEditorScroll(GtkAdjustment* /*adjustment*/, gpointer userData) {
     queueLineGutterRedraw(static_cast<AppState*>(userData));
 }
 
+void onMarkSet(
+    GtkTextBuffer* buffer,
+    const GtkTextIter* /*location*/,
+    GtkTextMark* mark,
+    gpointer userData) {
+    if (mark == gtk_text_buffer_get_insert(buffer)) {
+        AppState* state = static_cast<AppState*>(userData);
+        updateStatus(state);
+        // The current-line highlight and line number follow the cursor.
+        gtk_widget_queue_draw(state->textView);
+        queueLineGutterRedraw(state);
+    }
+}
+
+// Ctrl+wheel zooms, as in Notepad.
+gboolean onEditorWheel(
+    GtkEventControllerScroll* controller,
+    const double /*dx*/,
+    const double dy,
+    gpointer userData) {
+    const GdkModifierType modifiers =
+        gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(controller));
+    if ((modifiers & GDK_CONTROL_MASK) == 0 || dy == 0.0) {
+        return FALSE;
+    }
+
+    AppState* state = static_cast<AppState*>(userData);
+    setEditorZoom(
+        state,
+        state->zoomPercent + (dy < 0.0 ? kScrollZoomStepPercent : -kScrollZoomStepPercent));
+    return TRUE;
+}
+
 } // namespace
 
-void refreshEditor(AppState* state) {
-    state->syncingEditor = true;
-
+void setEditorText(AppState* state, const std::string_view text) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    gtk_text_buffer_set_text(buffer, state->document->content().c_str(), -1);
 
+    // Irreversible so the undo history (and the memory it holds) starts empty.
+    state->syncingEditor = true;
+    gtk_text_buffer_begin_irreversible_action(buffer);
+    gtk_text_buffer_set_text(buffer, text.data(), static_cast<int>(text.size()));
+    gtk_text_buffer_end_irreversible_action(buffer);
+    // Like Notepad, a freshly loaded text starts with the cursor at the top.
+    GtkTextIter start;
+    gtk_text_buffer_get_start_iter(buffer, &start);
+    gtk_text_buffer_place_cursor(buffer, &start);
+    // The view may still hold the previous buffer's scroll offset. Resetting
+    // the adjustments directly avoids scroll_to_mark() before allocation,
+    // which makes GTK warn about snapshotting unallocated widgets.
+    GtkScrolledWindow* scroll = GTK_SCROLLED_WINDOW(state->editorScroll);
+    gtk_adjustment_set_value(gtk_scrolled_window_get_vadjustment(scroll), 0.0);
+    gtk_adjustment_set_value(gtk_scrolled_window_get_hadjustment(scroll), 0.0);
     state->syncingEditor = false;
+
     updateStatus(state);
     queueLineGutterRedraw(state);
 }
 
-void syncEditorToDocument(AppState* state) {
-    GtkTextBuffer* editorBuffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    GtkTextIter start;
-    GtkTextIter end;
-    gtk_text_buffer_get_bounds(editorBuffer, &start, &end);
-    char* text = gtk_text_buffer_get_text(editorBuffer, &start, &end, FALSE);
-    state->document->setContent(text != nullptr ? text : "");
-    g_free(text);
+void setEditorZoom(AppState* state, const int percent) {
+    state->zoomPercent = std::clamp(percent, kMinZoomPercent, kMaxZoomPercent);
+
+    // Integer maths: printf("%f") would write a decimal comma in some locales,
+    // which CSS rejects.
+    const int tenths = kBaseFontSizeTenthsPt * state->zoomPercent / 100;
+    const std::string css = "textview.editor-text { font-size: " + std::to_string(tenths / 10)
+        + "." + std::to_string(tenths % 10) + "pt; }";
+
+    if (state->zoomProvider == nullptr) {
+        state->zoomProvider = gtk_css_provider_new();
+        gtk_style_context_add_provider_for_display(
+            gdk_display_get_default(),
+            GTK_STYLE_PROVIDER(state->zoomProvider),
+            GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
+    }
+    gtk_css_provider_load_from_string(state->zoomProvider, css.c_str());
+
+    updateStatus(state);
+    queueLineGutterRedraw(state);
 }
 
-bool isEditorWithinSizeLimit(AppState* state) {
+void applyEditorColors(AppState* state) {
+    gdk_rgba_parse(
+        &reinterpret_cast<PlumaTextView*>(state->textView)->currentLineColor,
+        editorColors(state).currentLine);
+    gtk_widget_queue_draw(state->textView);
+    queueLineGutterRedraw(state);
+}
+
+GCharPtr copyEditorText(AppState* state) {
     GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
     GtkTextIter start;
     GtkTextIter end;
     gtk_text_buffer_get_bounds(buffer, &start, &end);
-    char* text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
-    const gsize byteCount = text != nullptr ? std::strlen(text) : 0;
-    g_free(text);
+    return GCharPtr(gtk_text_buffer_get_text(buffer, &start, &end, FALSE), g_free);
+}
 
-    if (byteCount > core::kMaxFileSizeBytes) {
-        showToast(state, "Document exceeds the 50 MB limit.");
-        return false;
-    }
-    return true;
+void attachEditorBuffer(AppState* state, GtkTextBuffer* buffer) {
+    // Unlimited undo would keep every edit of a long session in memory.
+    gtk_text_buffer_set_max_undo_levels(buffer, kMaxUndoLevels);
+    g_signal_connect(buffer, "insert-text", G_CALLBACK(onInsertText), state);
+    g_signal_connect(buffer, "changed", G_CALLBACK(onTextChanged), state);
+    g_signal_connect(buffer, "mark-set", G_CALLBACK(onMarkSet), state);
 }
 
 GtkWidget* createEditorView(AppState* state) {
     state->lineGutter = gtk_drawing_area_new();
-    gtk_widget_set_size_request(state->lineGutter, 40, -1);
+    gtk_widget_add_css_class(state->lineGutter, "line-gutter");
     gtk_widget_set_vexpand(state->lineGutter, TRUE);
-    gtk_widget_set_hexpand(state->lineGutter, FALSE);
     gtk_drawing_area_set_draw_func(
         GTK_DRAWING_AREA(state->lineGutter),
         drawLineNumbers,
         state,
         nullptr);
 
-    GtkWidget* editorBackdrop = gtk_drawing_area_new();
-    gtk_drawing_area_set_draw_func(
-        GTK_DRAWING_AREA(editorBackdrop),
-        drawEditorBackground,
-        nullptr,
-        nullptr);
-
-    GtkWidget* editorPanel = gtk_overlay_new();
-    gtk_widget_set_vexpand(editorPanel, TRUE);
-    gtk_widget_set_hexpand(editorPanel, TRUE);
-    gtk_widget_set_overflow(editorPanel, GTK_OVERFLOW_HIDDEN);
-    gtk_overlay_set_child(GTK_OVERLAY(editorPanel), editorBackdrop);
-
     state->editorScroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(
         GTK_SCROLLED_WINDOW(state->editorScroll),
         GTK_POLICY_AUTOMATIC,
         GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(state->editorScroll), FALSE);
-    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(state->editorScroll), FALSE);
     gtk_widget_set_vexpand(state->editorScroll, TRUE);
     gtk_widget_set_hexpand(state->editorScroll, TRUE);
-    gtk_widget_set_halign(state->editorScroll, GTK_ALIGN_FILL);
-    gtk_widget_set_valign(state->editorScroll, GTK_ALIGN_FILL);
-    applyEditorLayerStyle(state->editorScroll);
 
-    state->textView = gtk_text_view_new();
-    gtk_text_view_set_monospace(GTK_TEXT_VIEW(state->textView), TRUE);
+    state->textView = GTK_WIDGET(g_object_new(pluma_text_view_get_type(), nullptr));
+    gtk_widget_add_css_class(state->textView, "editor-text");
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(state->textView), GTK_WRAP_NONE);
     gtk_text_view_set_left_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
     gtk_text_view_set_right_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
     gtk_text_view_set_top_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
     gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(state->textView), kEditorPadding);
-    gtk_widget_set_vexpand(state->textView, FALSE);
-    gtk_widget_set_hexpand(state->textView, FALSE);
-    applyEditorLayerStyle(state->textView);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(state->editorScroll), state->textView);
-    gtk_overlay_add_overlay(GTK_OVERLAY(editorPanel), state->editorScroll);
+
+    GtkEventController* wheel =
+        gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+    gtk_event_controller_set_propagation_phase(wheel, GTK_PHASE_CAPTURE);
+    g_signal_connect(wheel, "scroll", G_CALLBACK(onEditorWheel), state);
+    gtk_widget_add_controller(state->editorScroll, wheel);
 
     GtkWidget* editorRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(editorRow, "editor-row");
     gtk_widget_set_vexpand(editorRow, TRUE);
     gtk_widget_set_hexpand(editorRow, TRUE);
-    gtk_widget_set_overflow(editorRow, GTK_OVERFLOW_HIDDEN);
     gtk_box_append(GTK_BOX(editorRow), state->lineGutter);
-    gtk_box_append(GTK_BOX(editorRow), editorPanel);
-
-    GtkWidget* editorContainer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_add_css_class(editorContainer, "editor-workspace");
-    gtk_widget_set_vexpand(editorContainer, TRUE);
-    gtk_widget_set_hexpand(editorContainer, TRUE);
-    gtk_widget_set_overflow(editorContainer, GTK_OVERFLOW_HIDDEN);
-    gtk_widget_set_margin_start(editorContainer, 20);
-    gtk_widget_set_margin_end(editorContainer, 20);
-    gtk_widget_set_margin_bottom(editorContainer, 20);
-    gtk_box_append(GTK_BOX(editorContainer), editorRow);
-
-    GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->textView));
-    g_signal_connect(buffer, "insert-text", G_CALLBACK(onInsertText), state);
-    g_signal_connect(buffer, "changed", G_CALLBACK(onTextChanged), state);
+    gtk_box_append(GTK_BOX(editorRow), state->editorScroll);
 
     GtkAdjustment* editorVadjustment =
         gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(state->editorScroll));
     g_signal_connect(editorVadjustment, "value-changed", G_CALLBACK(onEditorScroll), state);
+    // Fires once a newly shown tab's buffer has been laid out, so the gutter
+    // is not left blank after a tab switch.
+    g_signal_connect(editorVadjustment, "changed", G_CALLBACK(onEditorScroll), state);
 
-    return editorContainer;
+    return editorRow;
 }
 
 } // namespace plumas::ui

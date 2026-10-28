@@ -9,8 +9,10 @@ OUTPUT_DIR="$PACKAGING_DIR/dist"
 ICON_SOURCE="$ROOT/plumas.png"
 ICON_FALLBACK="$ROOT/resources/plumas-icon.webp"
 
-PKG_NAME="plumas-text-editor"
-VERSION="$(grep '^project(plumas-text-editor' "$ROOT/CMakeLists.txt" | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
+PKG_NAME="pluma-text"
+# Earlier releases were packaged under this name; upgrading replaces them.
+OLD_PKG_NAME="plumas-text-editor"
+VERSION="$(grep '^project(pluma-text' "$ROOT/CMakeLists.txt" | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
 ARCH="$(dpkg --print-architecture)"
 DEB_FILE="${PKG_NAME}_${VERSION}_${ARCH}.deb"
 
@@ -161,6 +163,9 @@ Section: editors
 Priority: optional
 Architecture: ${ARCH}
 Depends: ${shlibs_depends}
+Conflicts: ${OLD_PKG_NAME}
+Replaces: ${OLD_PKG_NAME}
+Provides: ${OLD_PKG_NAME}
 Maintainer: ${PKG_MAINTAINER}
 Homepage: ${PKG_HOMEPAGE}
 Description: ${PKG_SUMMARY}
@@ -199,8 +204,8 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
     cmake --build "$BUILD_DIR" -j"$(nproc)"
 fi
 
-if [[ ! -x "$BUILD_DIR/plumas-text-editor" ]]; then
-    echo "Erro: binario nao encontrado em $BUILD_DIR/plumas-text-editor" >&2
+if [[ ! -x "$BUILD_DIR/pluma-text" ]]; then
+    echo "Erro: binario nao encontrado em $BUILD_DIR/pluma-text" >&2
     exit 1
 fi
 

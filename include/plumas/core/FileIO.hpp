@@ -1,60 +1,41 @@
 #pragma once
 
+#include "plumas/core/FileIoTypes.hpp"
+
 #include <atomic>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace plumas::core {
 
-constexpr std::size_t kMaxFileSizeBytes = 50U * 1024U * 1024U;
-constexpr std::size_t kMaxEditorChars = kMaxFileSizeBytes / 4U;
-constexpr std::size_t kMaxPathLength = 4096U;
-constexpr std::size_t kMaxConfigJsonSize = 1024U * 1024U;
-constexpr std::size_t kMaxIconFileSizeBytes = 512U * 1024U;
-constexpr std::size_t kMaxReplaceAllReplacements = 1'000'000U;
+// GTK hands out UTF-8 paths on every platform, but std::filesystem::path's
+// std::string overloads use the ANSI code page on Windows. Always convert
+// through these two helpers.
+std::filesystem::path pathFromUtf8(std::string_view utf8);
+std::string pathToUtf8(const std::filesystem::path& path);
 
-enum class FileIoError {
-    None,
-    InvalidPath,
-    NotFound,
-    NotRegularFile,
-    Symlink,
-    TooLarge,
-    PermissionDenied,
-    IoError,
-};
-
-struct FileReadResult {
-    std::string content;
-    FileIoError error = FileIoError::None;
-};
-
-struct TextReplaceResult {
-    std::string text;
-    std::size_t replacements = 0;
-    bool cancelled = false;
-    bool limitReached = false;
-};
-
-bool isValidPathString(const std::string& path);
 std::optional<std::filesystem::path> normalizePath(const std::string& path);
 const std::vector<std::string>& allowedTextFileExtensionNames();
 bool isAllowedTextFilePath(const std::filesystem::path& path);
-bool isSafeRecentFilePath(const std::filesystem::path& path);
-bool fileExistsForOverwrite(const std::filesystem::path& path);
-FileReadResult readTextFile(const std::filesystem::path& path);
-FileReadResult readSmallTextFile(const std::filesystem::path& path, std::size_t maxBytes);
+// True for UTF-8 without NUL bytes, the only text GtkTextBuffer accepts.
+bool isValidUtf8Text(std::string_view text);
+// Decided by the first line break, as Notepad does.
+bool usesCrlfLineEndings(std::string_view text);
+FileReadResult readTextFile(const std::filesystem::path& path, std::size_t maxBytes);
 bool isSafeRegularFileSize(const std::filesystem::path& path, std::size_t maxBytes);
 TextReplaceResult replaceAllInText(
-    const std::string& text,
-    const std::string& findText,
-    const std::string& replaceText,
+    std::string_view text,
+    std::string_view findText,
+    std::string_view replaceText,
     std::size_t maxReplacements,
     std::size_t maxOutputBytes,
     const std::atomic<bool>* cancelFlag);
-bool writeTextFileAtomic(const std::filesystem::path& path, const std::string& content);
-bool restrictConfigPermissions(const std::filesystem::path& path);
+bool writeTextFileAtomic(
+    const std::filesystem::path& path,
+    std::string_view content,
+    FilePermissions permissions);
 
 } // namespace plumas::core

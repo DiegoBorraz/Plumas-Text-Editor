@@ -1,0 +1,111 @@
+name: Windows installer
+
+# Builds PlumaText-<version>-setup.exe. Run it from the Actions tab ("Run
+# workflow"), or push a tag like v0.2.0 to also attach it to a GitHub release.
+# Pull requests that touch Windows packaging build it too.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/windows-installer.yml"
+      - "packaging/windows/**"
+      - "cmake/platforms/Windows.cmake"
+      - "resources/pluma-text.*"
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-libadwaita
+            mingw-w64-ucrt-x86_64-librsvg
+            mingw-w64-ucrt-x86_64-adwaita-icon-theme
+            mingw-w64-ucrt-x86_64-nlohmann-json
+            mingw-w64-ucrt-x86_64-pkg-config
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          cmake -B build-win -G Ninja -DCMAKE_BUILD_TYPE=Release -DPLUMAS_BUILD_TESTS=OFF
+          cmake --build build-win
+
+      - name: Bundle GTK runtime
+        shell: msys2 {0}
+        run: |
+          BUILD_DIR="$PWD/build-win" packaging/windows/bundle-runtime.sh
+          echo "== loaders.cache (paths must be relative)"
+          grep -m 3 '\.dll' packaging/windows/staging/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
+          echo "== DLLs: $(ls packaging/windows/staging/bin/*.dll | wc -l)"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+
+      - name: Build installer
+        shell: pwsh
+        working-directory: packaging/windows
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" PlumaText.iss'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PlumaText-windows-installer
+          path: packaging/windows/dist/*.exe
+          if-no-files-found: error
+
+      # Installs silently and starts the app with only Windows on PATH, so a
+      # DLL missing from the bundle fails here instead of on a user's machine.
+      - name: Smoke test the installed app
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem packaging/windows/dist/*.exe | Select-Object -First 1
+          $proc = Start-Process -FilePath $setup.FullName -Wait -PassThru `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/DIR=C:\PlumaTextTest'
+          if ($proc.ExitCode -ne 0) { throw "Installer failed with exit code $($proc.ExitCode)" }
+
+          $exe = 'C:\PlumaTextTest\bin\pluma-text.exe'
+          if (-not (Test-Path $exe)) { throw "pluma-text.exe was not installed to $exe" }
+          $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+
+          # Every DLL is resolved at start-up, before --help is handled.
+          $help = Start-Process -FilePath $exe -ArgumentList '--help' -Wait -PassThru
+          if ($help.ExitCode -ne 0) {
+            throw ("pluma-text.exe --help exited with 0x{0:X8}; 0xC0000135 means a missing DLL" -f $help.ExitCode)
+          }
+
+          # Full start-up: window, CSS, resources and icon theme.
+          $app = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 10
+          if ($app.HasExited) {
+            throw ("pluma-text.exe exited during start-up with 0x{0:X8}" -f $app.ExitCode)
+          }
+          Stop-Process -Id $app.Id
+          Write-Host "Installed app started and stayed up for 10 s."
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = (Get-ChildItem packaging/windows/dist/*.exe | Select-Object -First 1).FullName
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --generate-notes }
+          gh release upload $env:GITHUB_REF_NAME $setup --clobber

@@ -1,8 +1,11 @@
 #include "plumas/ui/TitleBar.hpp"
+#include "plumas/ui/MenuBar.hpp"
 #include "plumas/ui/Resources.hpp"
+#include "plumas/ui/Tabs.hpp"
 #include "plumas/ui/UiHelpers.hpp"
 
 #include "plumas/core/FileIO.hpp"
+#include "plumas/platform/Paths.hpp"
 
 #include <optional>
 #include <string>
@@ -10,6 +13,8 @@
 namespace plumas::ui {
 
 namespace {
+
+constexpr int kTitleIconSize = 16;
 
 void updateMaximizeIcon(AppState* state) {
     if (state->maximizeButton == nullptr) {
@@ -73,41 +78,36 @@ void attachTitleBarDrag(GtkWidget* widget, AppState* state) {
 
 GtkWidget* createTitleLogoFromResource() {
     GtkWidget* logo = gtk_image_new_from_resource(resourcePath(kIconFileName).c_str());
-    gtk_image_set_pixel_size(GTK_IMAGE(logo), 30);
-    gtk_widget_set_size_request(logo, 30, 30);
+    gtk_image_set_pixel_size(GTK_IMAGE(logo), kTitleIconSize);
     gtk_widget_set_valign(logo, GTK_ALIGN_CENTER);
     return logo;
 }
 
 GtkWidget* createTitleLogoFromFile(const std::string& iconPath) {
     GtkWidget* logo = gtk_image_new_from_file(iconPath.c_str());
-    gtk_image_set_pixel_size(GTK_IMAGE(logo), 30);
-    gtk_widget_set_size_request(logo, 30, 30);
+    gtk_image_set_pixel_size(GTK_IMAGE(logo), kTitleIconSize);
     gtk_widget_set_valign(logo, GTK_ALIGN_CENTER);
     return logo;
 }
 
 GtkWidget* createWindowControls(AppState* state) {
-    GtkWidget* controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget* controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(controls, "window-controls");
 
     GtkWidget* minimizeButton = gtk_button_new();
     gtk_button_set_icon_name(GTK_BUTTON(minimizeButton), "window-minimize-symbolic");
     gtk_widget_add_css_class(minimizeButton, "flat");
-    gtk_widget_set_size_request(minimizeButton, 24, 24);
     gtk_widget_set_tooltip_text(minimizeButton, "Minimize");
 
     state->maximizeButton = gtk_button_new();
     gtk_button_set_icon_name(GTK_BUTTON(state->maximizeButton), "window-maximize-symbolic");
     gtk_widget_add_css_class(state->maximizeButton, "flat");
-    gtk_widget_set_size_request(state->maximizeButton, 24, 24);
     gtk_widget_set_tooltip_text(state->maximizeButton, "Maximize");
 
     GtkWidget* closeButton = gtk_button_new();
     gtk_button_set_icon_name(GTK_BUTTON(closeButton), "window-close-symbolic");
     gtk_widget_add_css_class(closeButton, "flat");
     gtk_widget_add_css_class(closeButton, "window-close");
-    gtk_widget_set_size_request(closeButton, 24, 24);
     gtk_widget_set_tooltip_text(closeButton, "Close");
 
     g_signal_connect(minimizeButton, "clicked", G_CALLBACK(onMinimizeClicked), state);
@@ -121,48 +121,59 @@ GtkWidget* createWindowControls(AppState* state) {
     return controls;
 }
 
+GtkWidget* createLogo() {
+    if (hasBundledResource(kIconFileName)) {
+        return createTitleLogoFromResource();
+    }
+    if (const std::optional<std::string> iconPath =
+            findSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
+        return createTitleLogoFromFile(*iconPath);
+    }
+    return nullptr;
+}
+
+// Top row: icon, File/Edit/View, empty drag space, window buttons.
+GtkWidget* createMenuRow(AppState* state) {
+    const bool customChrome = !platform::usesNativeWindowChrome();
+
+    GtkWidget* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(row, "titlebar");
+
+    if (customChrome) {
+        if (GtkWidget* logo = createLogo()) {
+            gtk_widget_add_css_class(logo, "title-logo");
+            gtk_box_append(GTK_BOX(row), logo);
+        }
+    }
+
+    GtkWidget* menuBar = createMenuBar();
+    gtk_widget_set_valign(menuBar, GTK_ALIGN_CENTER);
+    gtk_box_append(GTK_BOX(row), menuBar);
+
+    GtkWidget* dragArea = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_hexpand(dragArea, TRUE);
+    gtk_box_append(GTK_BOX(row), dragArea);
+
+    if (customChrome) {
+        attachTitleBarDrag(dragArea, state);
+        gtk_box_append(GTK_BOX(row), createWindowControls(state));
+    }
+    return row;
+}
+
 } // namespace
 
 GtkWidget* createTitleBar(AppState* state) {
-    GtkWidget* titleBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_add_css_class(titleBar, "titlebar");
-    gtk_widget_set_margin_start(titleBar, 12);
-    gtk_widget_set_margin_end(titleBar, 8);
-    gtk_widget_set_margin_top(titleBar, 12);
+    GtkWidget* chrome = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(chrome, "window-chrome");
+    gtk_box_append(GTK_BOX(chrome), createMenuRow(state));
 
-    GtkWidget* titleLabel = gtk_label_new(kWindowTitle);
-    gtk_label_set_xalign(GTK_LABEL(titleLabel), 0.0f);
-    gtk_widget_add_css_class(titleLabel, "app-title");
-    setLabelStyle(GTK_LABEL(titleLabel), kAppTitleFontSizePt, true);
-
-    GtkWidget* titleGroup = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    if (hasBundledResource(kIconFileName)) {
-        gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromResource());
-    } else if (isSafeFilesystemImagePath(kIconFileName, core::kMaxIconFileSizeBytes)) {
-        const std::optional<std::string> iconPath = findFilesystemResourcePath(kIconFileName);
-        if (iconPath.has_value()) {
-            gtk_box_append(GTK_BOX(titleGroup), createTitleLogoFromFile(*iconPath));
-        }
-    }
-    gtk_box_append(GTK_BOX(titleGroup), titleLabel);
-
-    state->pathLabel = gtk_label_new("(new document)");
-    gtk_label_set_xalign(GTK_LABEL(state->pathLabel), 0.5f);
-    gtk_widget_add_css_class(state->pathLabel, "document-path");
-    gtk_label_set_ellipsize(GTK_LABEL(state->pathLabel), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_widget_set_hexpand(state->pathLabel, TRUE);
-
-    GtkWidget* windowControls = createWindowControls(state);
-    gtk_widget_set_halign(windowControls, GTK_ALIGN_END);
-
-    gtk_box_append(GTK_BOX(titleBar), titleGroup);
-    gtk_box_append(GTK_BOX(titleBar), state->pathLabel);
-    gtk_box_append(GTK_BOX(titleBar), windowControls);
-
-    attachTitleBarDrag(titleGroup, state);
-    attachTitleBarDrag(state->pathLabel, state);
-
-    return titleBar;
+    // Tabs sit right above the editor, so the active one joins the page.
+    GtkWidget* tabRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(tabRow, "tab-row");
+    gtk_box_append(GTK_BOX(tabRow), createTabStrip(state));
+    gtk_box_append(GTK_BOX(chrome), tabRow);
+    return chrome;
 }
 
 } // namespace plumas::ui

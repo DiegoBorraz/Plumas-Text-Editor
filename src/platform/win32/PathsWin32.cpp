@@ -1,6 +1,6 @@
 #include "plumas/platform/Paths.hpp"
 
-#ifndef WIN32
+#ifndef _WIN32
 #error "PathsWin32.cpp must only be built on Windows."
 #endif
 
@@ -17,7 +17,7 @@ namespace plumas::platform {
 
 namespace {
 
-constexpr const char kAppConfigDirName[] = "plumas-text-editor";
+constexpr const char kAppConfigDirName[] = "pluma-text";
 
 } // namespace
 
@@ -46,8 +46,8 @@ std::vector<std::filesystem::path> dataDirectoriesWin32() {
         std::filesystem::path(PLUMAS_INSTALL_DATADIR) / kAppConfigDirName);
 #endif
 
-    const std::filesystem::path executableDirectory = executableDirectoryWin32();
-    directories.emplace_back(executableDirectory / "share" / kAppConfigDirName);
+    const std::filesystem::path exeDirectory = executableDirectoryWin32();
+    directories.emplace_back(exeDirectory / "share" / kAppConfigDirName);
 
     wchar_t appDataPath[MAX_PATH] = {};
     if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, appDataPath))) {
