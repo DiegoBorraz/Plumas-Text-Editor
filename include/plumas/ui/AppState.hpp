@@ -106,6 +106,8 @@ struct AppState {
 
     // Runs once the save started from the unsaved-changes dialog succeeds.
     AppAction afterSaveAction = nullptr;
+    // The tab a pending "Save As" dialog will save, for the same reason.
+    EditorTab* saveTarget = nullptr;
     std::vector<std::unique_ptr<EditorTab>> tabs;
     // Never null while the window exists.
     EditorTab* activeTab = nullptr;
@@ -117,6 +119,9 @@ struct AppState {
 struct PendingAction {
     AppState* state = nullptr;
     AppAction action = nullptr;
+    // The tab the question was about; the answer applies to it even if another
+    // tab became active meanwhile (e.g. a file opened from the file manager).
+    EditorTab* tab = nullptr;
 };
 
 } // namespace plumas::ui

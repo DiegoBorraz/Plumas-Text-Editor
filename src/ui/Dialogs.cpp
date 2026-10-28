@@ -112,6 +112,18 @@ void onSaveDialogFinished(GObject* source, GAsyncResult* result, gpointer userDa
     GError* error = nullptr;
     GFile* file = gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), result, &error);
 
+    // Save the tab the dialog was opened for, not whichever is active now.
+    EditorTab* target = std::exchange(state->saveTarget, nullptr);
+    if (!hasTab(state, target)) {
+        if (file != nullptr) {
+            g_object_unref(file);
+        }
+        g_clear_error(&error);
+        runAfterSaveAction(state, false);
+        return;
+    }
+    activateTab(state, target);
+
     // The file dialog already asked before replacing an existing file.
     bool saved = false;
     if (const std::optional<std::string> path = takeDialogPath(state, file, error)) {
@@ -140,6 +152,13 @@ void onUnsavedDialogFinished(GObject* source, GAsyncResult* result, gpointer use
     if (chosen == nullptr || g_strcmp0(chosen, "cancel") == 0) {
         return;
     }
+
+    // The answer is about the tab that was asked about; it may have been
+    // closed, or another tab activated, while the dialog was open.
+    if (!hasTab(state, pending->tab)) {
+        return;
+    }
+    activateTab(state, pending->tab);
 
     if (g_strcmp0(chosen, "discard") == 0) {
         pending->action(state);
@@ -210,6 +229,7 @@ void showOpenDialog(AppState* state) {
 
 void showSaveDialog(AppState* state) {
     GtkFileDialog* dialog = createTextFileDialog("Save file");
+    state->saveTarget = state->activeTab;
 
     if (!state->activeTab->document->filePath().empty()) {
         GFile* initialFile = g_file_new_for_path(state->activeTab->document->filePath().c_str());
@@ -222,7 +242,7 @@ void showSaveDialog(AppState* state) {
 }
 
 void showUnsavedDialog(AppState* state, const AppAction action) {
-    auto* pending = new PendingAction{state, action};
+    auto* pending = new PendingAction{state, action, state->activeTab};
     AdwDialog* dialog = adw_alert_dialog_new(
         "Unsaved changes",
         "Do you want to save your changes before continuing?");

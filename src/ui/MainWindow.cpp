@@ -69,8 +69,18 @@ gboolean onCloseRequest(GtkWindow* /*window*/, gpointer userData) {
 }
 
 void onWindowDestroy(GtkWidget* /*window*/, gpointer userData) {
+    AppState* state = static_cast<AppState*>(userData);
     // Stops a running Replace All before the widgets it would update are gone.
-    static_cast<AppState*>(userData)->replaceAllJob.reset();
+    state->replaceAllJob.reset();
+
+    // Idle callbacks (tab close, scroll restore) and theme changes can still
+    // run after this; with no tabs and null widgets they find nothing to touch.
+    state->activeTab = nullptr;
+    state->saveTarget = nullptr;
+    state->tabs.clear();
+    state->textView = nullptr;
+    state->lineGutter = nullptr;
+    state->editorScroll = nullptr;
 }
 
 void onResizePressed(

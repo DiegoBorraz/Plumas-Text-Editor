@@ -39,12 +39,14 @@ std::filesystem::path configDirectoryPosix() {
     }
     return std::filesystem::path("Library") / "Application Support" / kAppConfigDirName;
 #else
+    // The XDG spec says relative values must be ignored; they would resolve
+    // against the working directory.
     if (const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
-        xdgConfigHome != nullptr && isValidEnvPath(xdgConfigHome)) {
+        isValidEnvPath(xdgConfigHome) && isAbsoluteEnvPath(xdgConfigHome)) {
         return std::filesystem::path(xdgConfigHome) / kAppConfigDirName;
     }
 
-    if (const char* home = std::getenv("HOME"); home != nullptr && isValidEnvPath(home)) {
+    if (const char* home = std::getenv("HOME"); isValidEnvPath(home) && isAbsoluteEnvPath(home)) {
         return std::filesystem::path(home) / ".config" / kAppConfigDirName;
     }
 

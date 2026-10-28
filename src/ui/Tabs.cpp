@@ -50,7 +50,7 @@ void rememberViewTop(AppState* state) {
 // only once those are done, so the scroll lands where the user left it.
 gboolean restoreViewTop(gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
-    if (state->activeTab != nullptr) {
+    if (state->activeTab != nullptr && state->textView != nullptr) {
         if (GtkTextMark* mark = gtk_text_buffer_get_mark(state->activeTab->buffer, kViewTopMark)) {
             gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(state->textView), mark, 0.0, TRUE, 0.0, 0.0);
         }
@@ -94,13 +94,6 @@ void closeActiveTabAndContinueQuit(AppState* state) {
     requestQuit(state);
 }
 
-bool containsTab(const AppState* state, const EditorTab* tab) {
-    return std::any_of(
-        state->tabs.begin(),
-        state->tabs.end(),
-        [tab](const std::unique_ptr<EditorTab>& entry) { return entry.get() == tab; });
-}
-
 struct PendingTabClose {
     AppState* state;
     EditorTab* tab;
@@ -113,7 +106,7 @@ void closeTabLater(AppState* state, EditorTab* tab) {
         G_PRIORITY_DEFAULT_IDLE,
         +[](gpointer userData) -> gboolean {
             const std::unique_ptr<PendingTabClose> pending(static_cast<PendingTabClose*>(userData));
-            if (containsTab(pending->state, pending->tab)) {
+            if (hasTab(pending->state, pending->tab)) {
                 closeTab(pending->state, pending->tab);
             }
             return G_SOURCE_REMOVE;
@@ -316,6 +309,13 @@ void requestQuit(AppState* state) {
         }
     }
     gtk_window_destroy(state->window);
+}
+
+bool hasTab(const AppState* state, const EditorTab* tab) {
+    return std::any_of(
+        state->tabs.begin(),
+        state->tabs.end(),
+        [tab](const std::unique_ptr<EditorTab>& entry) { return entry.get() == tab; });
 }
 
 bool hasUnsavedTabs(const AppState* state) {

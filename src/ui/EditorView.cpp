@@ -231,7 +231,7 @@ void onInsertText(
 
 void onTextChanged(GtkTextBuffer* /*buffer*/, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
-    if (state->syncingEditor) {
+    if (state->syncingEditor || state->activeTab == nullptr) {
         return;
     }
 

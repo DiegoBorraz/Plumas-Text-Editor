@@ -321,6 +321,12 @@ void testConfig() {
     CHECK(fs::exists(Config::legacyPath()));
     CHECK(Config::defaultPath().parent_path().filename() == "pluma-text");
 
+    // A relative XDG_CONFIG_HOME is ignored (XDG spec) instead of resolving
+    // against the working directory.
+    ::setenv("XDG_CONFIG_HOME", "relative-dir", 1);
+    CHECK(Config::defaultPath().is_absolute());
+    ::setenv("XDG_CONFIG_HOME", dir.path.c_str(), 1);
+
     std::ofstream(Config::defaultPath()) << "{ not json";
     Config broken;
     CHECK(!broken.load());

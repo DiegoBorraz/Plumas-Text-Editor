@@ -30,5 +30,7 @@ void closeTab(AppState* state, EditorTab* tab);
 // Asks about every tab with unsaved changes, then closes the window.
 void requestQuit(AppState* state);
 bool hasUnsavedTabs(const AppState* state);
+// False once the tab has been closed; for callbacks that outlive a tab.
+bool hasTab(const AppState* state, const EditorTab* tab);
 
 } // namespace plumas::ui
