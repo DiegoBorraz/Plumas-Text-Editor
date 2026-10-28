@@ -23,6 +23,7 @@ constexpr int kDefaultZoomPercent = 100;
 constexpr const char* kIconFileName = "plumas-icon.webp";
 constexpr const char* kStylesFileName = "styles.css";
 constexpr const char* kDarkStylesFileName = "styles-dark.css";
+constexpr const char* kAdwaitaVariablesFileName = "styles-adw-variables.css";
 
 using GCharPtr = std::unique_ptr<char, decltype(&g_free)>;
 

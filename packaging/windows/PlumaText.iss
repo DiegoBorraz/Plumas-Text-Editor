@@ -2,7 +2,7 @@
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "Diego Avila"
 #define MyAppURL "https://github.com/DiegoBorraz/Plumas-Text-Editor"
-#define MyAppExeName "pluma-text.exe"
+#define MyAppExeName "bin\pluma-text.exe"
 
 [Setup]
 AppId={{A4B8F2E1-7C3D-4F9A-9B2E-1D5C6A7E8F90}
@@ -19,6 +19,8 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 LicenseFile=..\..\packaging\debian\LICENSE
+SetupIconFile=..\..\resources\pluma-text.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -28,7 +30,6 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "staging\pluma-text.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "staging\share\*"; DestDir: "{app}\share"; Flags: ignoreversion recursesubdirs createallsubdirs

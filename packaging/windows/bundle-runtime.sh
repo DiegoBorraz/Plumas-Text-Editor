@@ -31,15 +31,24 @@ fi
 rm -rf "$STAGING"
 mkdir -p "$STAGING/bin" "$STAGING/share/glib-2.0/schemas" "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders"
 
-cp "$EXE" "$STAGING/pluma-text.exe"
+# The exe lives in bin/ next to the DLLs: Windows only looks for DLLs in the
+# exe's own directory (and system paths), and GTK finds share/ and lib/ as
+# siblings of that directory.
+cp "$EXE" "$STAGING/bin/pluma-text.exe"
 cp "$ROOT/packaging/debian/LICENSE" "$STAGING/LICENSE"
 
-mapfile -t runtime_libs < <(ldd "$EXE" | awk '/=>/ {print $3}' | grep -E "${MINGW_PREFIX}/|/ucrt64/" | sort -u)
-for lib in "${runtime_libs[@]}"; do
-    if [[ -f "$lib" ]]; then
-        cp -u "$lib" "$STAGING/bin/"
-    fi
-done
+# Copies every MinGW DLL a binary loads, directly or indirectly.
+copy_runtime_dlls() {
+    local binary="$1"
+    local lib
+    while IFS= read -r lib; do
+        if [[ -f "$lib" ]]; then
+            cp -u "$lib" "$STAGING/bin/"
+        fi
+    done < <(ldd "$binary" | awk '/=>/ {print $3}' | grep -E "${MINGW_PREFIX}/|/ucrt64/" | sort -u)
+}
+
+copy_runtime_dlls "$EXE"
 
 GLIB_SCHEMAS_SRC="${MINGW_PREFIX}/share/glib-2.0/schemas"
 if [[ -d "$GLIB_SCHEMAS_SRC" ]]; then
@@ -52,8 +61,23 @@ fi
 GDK_PIXBUF_LOADERS="${MINGW_PREFIX}/lib/gdk-pixbuf-2.0/2.10.0/loaders"
 if [[ -d "$GDK_PIXBUF_LOADERS" ]]; then
     cp -r "${GDK_PIXBUF_LOADERS}/." "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders/"
+    # Loaders are plugins: their own DLLs (librsvg for the SVG icons, ...)
+    # never show up in the exe's ldd output.
+    for loader in "$GDK_PIXBUF_LOADERS"/*.dll; do
+        copy_runtime_dlls "$loader"
+    done
+
     if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
-        gdk-pixbuf-query-loaders > "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+        # The cache lists loaders by absolute path on this machine; strip the
+        # prefix so gdk-pixbuf resolves them relative to the install.
+        prefix_windows="$(cygpath -m "$MINGW_PREFIX")"
+        gdk-pixbuf-query-loaders \
+            | sed -e "s|${prefix_windows}/||g" -e "s|${MINGW_PREFIX}/||g" \
+            > "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+        if grep -q -e "$prefix_windows" "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"; then
+            echo "Erro: loaders.cache ainda tem caminhos absolutos" >&2
+            exit 1
+        fi
     fi
 fi
 

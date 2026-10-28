@@ -27,6 +27,11 @@ target_link_libraries(plumas_core PUBLIC plumas_platform)
 
 set_target_properties(pluma-text PROPERTIES WIN32_EXECUTABLE TRUE)
 
+# Embeds resources/pluma-text.ico, the icon Explorer, the taskbar and the
+# Start menu show for pluma-text.exe.
+enable_language(RC)
+target_sources(pluma-text PRIVATE ${CMAKE_SOURCE_DIR}/resources/pluma-text.rc)
+
 install(TARGETS pluma-text RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(
     FILES ${CMAKE_SOURCE_DIR}/packaging/debian/LICENSE

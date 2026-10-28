@@ -1,0 +1,7 @@
+/* "Pena" accent for libadwaita 1.6+, which reads CSS variables. libadwaita
+   derives the lighter text accent for the dark theme from this colour. */
+
+:root {
+  --accent-bg-color: #B4237A;
+  --accent-fg-color: #FFFFFF;
+}

@@ -69,9 +69,26 @@ void onDarkChanged(GObject* /*styleManager*/, GParamSpec* /*property*/, gpointer
     applyColorScheme(static_cast<AppState*>(userData));
 }
 
+// libadwaita 1.6+ (GTK 4.16+, e.g. MSYS2 on Windows) styles its widgets with
+// CSS variables instead of the named accent colours in styles.css. GTK 4.14
+// cannot parse variables, so this file is only loaded where they exist.
+void loadAdwaitaVariables() {
+    if (gtk_get_minor_version() < 16 || !hasBundledResource(kAdwaitaVariablesFileName)) {
+        return;
+    }
+    GtkCssProvider* provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_resource(provider, resourcePath(kAdwaitaVariablesFileName).c_str());
+    gtk_style_context_add_provider_for_display(
+        gdk_display_get_default(),
+        GTK_STYLE_PROVIDER(provider),
+        GTK_STYLE_PROVIDER_PRIORITY_USER);
+    g_object_unref(provider);
+}
+
 void onAppStartup(AdwApplication* /*app*/, gpointer userData) {
     AppState* state = static_cast<AppState*>(userData);
     loadStyles();
+    loadAdwaitaVariables();
     applyColorScheme(state);
     g_signal_connect(
         adw_style_manager_get_default(), "notify::dark", G_CALLBACK(onDarkChanged), state);

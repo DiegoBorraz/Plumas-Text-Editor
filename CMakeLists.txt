@@ -105,6 +105,7 @@ add_custom_command(
         ${PLUMAS_GRESOURCE_XML}
         ${CMAKE_SOURCE_DIR}/src/ui/styles.css
         ${CMAKE_SOURCE_DIR}/src/ui/styles-dark.css
+        ${CMAKE_SOURCE_DIR}/src/ui/styles-adw-variables.css
         ${CMAKE_SOURCE_DIR}/resources/plumas-icon.webp
     COMMENT "Compiling GResource bundle"
 )

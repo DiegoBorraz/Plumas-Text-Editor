@@ -33,7 +33,8 @@ window.plumas-app {
   font-size: 10pt;
 }
 
-window.plumas-app.maximized {
+window.plumas-app.maximized,
+window.plumas-app.square-corners {
   border-radius: 0;
 }
 

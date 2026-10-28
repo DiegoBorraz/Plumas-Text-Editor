@@ -162,6 +162,11 @@ void buildMainWindow(AppState* state) {
     gtk_window_set_icon_name(state->window, kAppId);
     gtk_window_set_decorated(state->window, platform::usesNativeWindowChrome());
     gtk_widget_add_css_class(GTK_WIDGET(state->window), "plumas-app");
+#ifdef _WIN32
+    // Without the system frame there is no DWM shadow or corner clipping, so
+    // rounded corners would show the desktop through dark pixels.
+    gtk_widget_add_css_class(GTK_WIDGET(state->window), "square-corners");
+#endif
 
     GtkWidget* shell = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_add_css_class(shell, "plumas-shell");
